@@ -1,0 +1,11 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://bkw4mqh08yvlc"]
+
+[ext_resource type="Shader" uid="uid://dsda2a6g7j37p" path="res://resources/crops1x1.gdshader" id="1_shader"]
+
+[resource]
+shader = ExtResource("1_shader")
+shader_parameter/use_custom_tex = false
+shader_parameter/offset_px = Vector2(0, 0)
+shader_parameter/texture_size = Vector2(32, 16)
+shader_parameter/scale_mult = 1.0000000149012
+shader_parameter/modulate_color = Color(1, 1, 1, 1)

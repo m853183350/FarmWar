@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3 uid="uid://bmo7bdhjmtwum"]
+
+[ext_resource type="Texture2D" uid="uid://df52ueu27330m" path="res://assets/sprites/tiles/ocean_2.png" id="1_l4bdw"]
+[ext_resource type="Script" path="res://scripts/world/tiles/ocean_tile.gd" id="2_script"]
+
+[node name="Ocean2" type="Sprite2D" unique_id=2146167114]
+texture_filter = 1
+scale = Vector2(8, 8)
+texture = ExtResource("1_l4bdw")
+centered = false
+script = ExtResource("2_script")

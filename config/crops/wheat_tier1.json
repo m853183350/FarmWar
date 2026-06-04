@@ -1,0 +1,62 @@
+{
+	"crop_id": "wheat_tier1",
+	"crop_name": "原始小麦",
+	"plant_family": "poaceae",
+	"tier": 1,
+	"description": "小麦，文明起步阶段的最好的伙伴",
+	"scene_path": "res://scenes/crops/wheat_tire_1.tscn",
+
+	"soil_requirements": {
+		"min_moisture": 0.4,
+		"max_moisture": 1.2,
+		"min_temperature": 10.0,
+		"max_temperature": 30.0,
+		"temperature_tolerance": 10.0,
+		"fertility_factor": 1.0
+	},
+
+	"growth_stages": [
+		{
+			"name": "种子",
+			"tick_duration": 0,
+			"frame_x": 0,
+			"passable": true
+		},
+		{
+			"name": "发芽",
+			"tick_duration": 40,
+			"frame_x": 8,
+			"passable": true
+		},
+		{
+			"name": "生长",
+			"tick_duration": 60,
+			"frame_x": 16,
+			"passable": true
+		},
+		{
+			"name": "成熟",
+			"tick_duration": -1,
+			"frame_x": 24,
+			"passable": true
+		}
+	],
+
+	"harvest_yields": [
+		{
+			"item_id": "wheat_grain",
+			"base_amount": 0.1,
+			"probability": 1.0
+		},
+		{
+			"item_id": "wheat_seed",
+			"base_amount": 1.0,
+			"probability": 0.8
+		},
+		{
+			"item_id": "straw",
+			"base_amount": 1.0,
+			"probability": 0.6
+		}
+	]
+}

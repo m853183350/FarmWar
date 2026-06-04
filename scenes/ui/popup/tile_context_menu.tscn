@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://bctxmenupopup01"]
+
+[ext_resource type="Script" path="res://scripts/ui/popup/tile_context_menu.gd" id="1_script"]
+
+[node name="TileContextMenu" type="CanvasLayer"]
+script = ExtResource("1_script")

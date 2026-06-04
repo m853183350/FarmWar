@@ -1,0 +1,14 @@
+{
+	"dirt": {
+		"scene": "res://scenes/world/dirt_1.tscn",
+		"weight": 0.45
+	},
+	"stone": {
+		"scene": "res://scenes/world/stone_1.tscn",
+		"weight": 0.25
+	},
+	"ocean": {
+		"scene": "res://scenes/world/ocean_1.tscn",
+		"weight": 0.30
+	}
+}

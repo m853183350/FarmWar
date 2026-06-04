@@ -1,0 +1,18 @@
+{
+	"plow": [
+		{
+			"_comment": "翻耕：土质地面 → 农田。继承源地块的 fertility 和 moisture。",
+			"source": "res://scenes/world/dirt_1.tscn",
+			"target": "res://scenes/world/farmland_1.tscn",
+			"target_tile_type": 3
+		}
+	],
+	"dig": [
+		{
+			"_comment": "挖掘：石质地面 → 普通土壤。产出石材资源。",
+			"source": "res://scenes/world/stone_1.tscn",
+			"target": "res://scenes/world/dirt_1.tscn",
+			"target_tile_type": 0
+		}
+	]
+}

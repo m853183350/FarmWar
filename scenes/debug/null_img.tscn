@@ -1,0 +1,9 @@
+[gd_scene format=3 uid="uid://dj2ugw1p56h3"]
+
+[ext_resource type="Texture2D" uid="uid://cmylnkb8ug6uf" path="res://assets/sprites/null_img.png" id="1_qdv17"]
+
+[node name="NullImg" type="Sprite2D" unique_id=131984883]
+texture_filter = 1
+scale = Vector2(8, 8)
+texture = ExtResource("1_qdv17")
+centered = false

@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://dbvdgkjxpgvoj"]
+
+[ext_resource type="Script" uid="uid://dxalidq8gcw8y" path="res://scripts/world/camera_controller.gd" id="1_0xm2m"]
+[ext_resource type="PackedScene" uid="uid://cd0a2c40o4v74" path="res://scenes/world/world.tscn" id="1_ig7tw"]
+[ext_resource type="Script" uid="uid://dywptnwgxovja" path="res://scripts/ui/tick_counter_label.gd" id="2_0xm2m"]
+[ext_resource type="Script" uid="uid://dkgj8vb08bb5w" path="res://scripts/world/tile_selector.gd" id="2_1bvp3"]
+
+[node name="Node2D" type="Node2D" unique_id=352653355]
+
+[node name="world" parent="." unique_id=1620020176 instance=ExtResource("1_ig7tw")]
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=936608823]
+position = Vector2(968, 544)
+script = ExtResource("1_0xm2m")
+edge_margin = 40
+
+[node name="TickCounterLabel" type="Label" parent="." unique_id=1780864568]
+visible = false
+offset_left = -40.0
+offset_top = -24.0
+offset_bottom = -1.0
+text = "0"
+script = ExtResource("2_0xm2m")
+metadata/_custom_type_script = "uid://dywptnwgxovja"
+
+[node name="TileSelector" type="Node2D" parent="." unique_id=521783773]
+script = ExtResource("2_1bvp3")
+HOVER_WIDTH = 3.0
+SELECTION_FILL = Color(0.2, 0.6, 1, 0.57254905)

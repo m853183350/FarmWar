@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://cd0a2c40o4v74"]
+
+[ext_resource type="Script" path="res://scripts/world/terrain_generator.gd" id="1_terrain"]
+[ext_resource type="Script" path="res://scripts/world/camera_controller.gd" id="2_camera"]
+[ext_resource type="Script" path="res://scripts/world/tile_selector.gd" id="3_tile_selector"]
+
+[node name="world" type="Node2D" unique_id=1620020176]
+script = ExtResource("1_terrain")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+current_enabled = true
+script = ExtResource("2_camera")
+
+[node name="TileSelector" type="Node2D" parent="."]
+z_index = 10
+script = ExtResource("3_tile_selector")

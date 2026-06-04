@@ -1,0 +1,17 @@
+[gd_scene format=3 uid="uid://jhrr56pcq35n"]
+
+[ext_resource type="Material" uid="uid://bkw4mqh08yvlc" path="res://resources/materials/crops/crops1x1.tres" id="1_k3bd4"]
+[ext_resource type="Texture2D" uid="uid://ch2e8yj4dfq0c" path="res://assets/sprites/crops/wheat_tire1.png" id="1_tex"]
+[ext_resource type="Script" uid="uid://d1ba1qpqfhowu" path="res://scripts/crops/plants/wheat_tier1.gd" id="2_script"]
+
+[node name="WheatTire1" type="Sprite2D" unique_id=1865884513]
+texture_filter = 1
+material = ExtResource("1_k3bd4")
+scale = Vector2(8, 8)
+texture = ExtResource("1_tex")
+centered = false
+offset = Vector2(0, -8)
+region_enabled = true
+region_rect = Rect2(0, 0, 8, 16)
+region_filter_clip_enabled = true
+script = ExtResource("2_script")

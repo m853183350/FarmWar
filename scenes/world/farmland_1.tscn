@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3 uid="uid://dp72t38ch8fli"]
+
+[ext_resource type="Texture2D" uid="uid://dkyvuqj7uo72u" path="res://assets/sprites/tiles/farmland_1.png" id="1_tex"]
+[ext_resource type="Script" path="res://scripts/world/tiles/farmland_tile.gd" id="2_script"]
+
+[node name="Farmland1" type="Sprite2D" unique_id=479532248]
+texture_filter = 1
+scale = Vector2(8, 8)
+texture = ExtResource("1_tex")
+centered = false
+script = ExtResource("2_script")

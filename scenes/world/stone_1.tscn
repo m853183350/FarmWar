@@ -1,0 +1,11 @@
+[gd_scene load_steps=3 format=3 uid="uid://c3bexsr0tppiv"]
+
+[ext_resource type="Texture2D" uid="uid://bmhk4enrkgost" path="res://assets/sprites/tiles/stone1.png" id="1_xmwbn"]
+[ext_resource type="Script" path="res://scripts/world/tiles/stone_tile.gd" id="2_script"]
+
+[node name="Stone1" type="Sprite2D" unique_id=313712753]
+texture_filter = 1
+scale = Vector2(8, 8)
+texture = ExtResource("1_xmwbn")
+centered = false
+script = ExtResource("2_script")
