@@ -1,6 +1,7 @@
 ## 地块操作上下文菜单。
 ##
-## 在地块框选完成后弹出，提供操作选项（翻耕、挖掘、种植、收获、取消）。
+## 在地块框选完成后弹出，提供操作选项（翻耕、挖掘、种植、收获、取消）以及
+## 派遣选项（派遣翻耕/种植/收获/挖掘），后者将任务分配给工作单位执行。
 ## 使用全屏透明遮罩阻断世界交互，避免点击空地触发新选择。
 ##
 ## 使用方式：
@@ -11,7 +12,8 @@ class_name TileContextMenu extends CanvasLayer
 # 1. 信号
 # ============================================================
 
-## 菜单项被选中。action 为 "plow"/"dig"/"plant"/"harvest" 等，tiles 为选中的地块坐标数组。
+## 菜单项被选中。action 为 "plow"/"dig"/"plant"/"harvest" 或 "task_plow"/"task_plant"/"task_harvest"/"task_dig"。
+## 派遣类 action 由本菜单内部直接生成 TaskData 分发，不再向上传递。
 signal action_selected(action: String, tiles: Array)
 
 ## 菜单被取消（点遮罩或取消按钮）。
@@ -21,6 +23,7 @@ signal cancelled()
 # 3. 常量
 # ============================================================
 
+## 直接操作菜单项（立即执行，不走工人）。
 const MENU_ITEMS: Array[Dictionary] = [
 	{ "text": "翻耕", "action": "plow" },
 	{ "text": "挖掘", "action": "dig" },
@@ -28,7 +31,15 @@ const MENU_ITEMS: Array[Dictionary] = [
 	{ "text": "收获", "action": "harvest" },
 ]
 
-const BUTTON_MIN_WIDTH: float = 160.0
+## 派遣菜单项（生成 TaskData 分配给工人执行）。
+const TASK_MENU_ITEMS: Array[Dictionary] = [
+	{ "text": "派遣翻耕", "action": "task_plow" },
+	{ "text": "派遣种植", "action": "task_plant" },
+	{ "text": "派遣收获", "action": "task_harvest" },
+	{ "text": "派遣挖掘", "action": "task_dig" },
+]
+
+const BUTTON_MIN_WIDTH: float = 200.0
 const BUTTON_FONT_SIZE: int = 22
 const PANEL_PADDING: int = 12
 
@@ -111,7 +122,7 @@ func _build_ui() -> void:
 	var sep: HSeparator = HSeparator.new()
 	vbox.add_child(sep)
 
-	# 操作按钮
+	# 即时操作按钮
 	for item: Dictionary in MENU_ITEMS:
 		var btn: Button = _create_action_button(item["text"], item["action"])
 		vbox.add_child(btn)
@@ -119,6 +130,15 @@ func _build_ui() -> void:
 	# 分隔线
 	var sep2: HSeparator = HSeparator.new()
 	vbox.add_child(sep2)
+
+	# 派遣操作按钮（任务驱动）
+	for item: Dictionary in TASK_MENU_ITEMS:
+		var btn: Button = _create_action_button(item["text"], item["action"])
+		vbox.add_child(btn)
+
+	# 分隔线
+	var sep3: HSeparator = HSeparator.new()
+	vbox.add_child(sep3)
 
 	# 取消按钮
 	var cancel_btn: Button = Button.new()
@@ -164,7 +184,12 @@ func _make_panel_stylebox() -> StyleBoxFlat:
 # ============================================================
 
 func _on_action(action: String) -> void:
-	action_selected.emit(action, tiles)
+	if action.begins_with("task_"):
+		# 派遣类操作：为每个地块生成独立 TaskData，通过 UnitManager 分发给工人
+		_dispatch_tasks(action, tiles)
+	else:
+		# 即时操作：向上层发出信号（由 TileSelector → EventBus → TerrainGenerator 处理）
+		action_selected.emit(action, tiles)
 	queue_free()
 
 func _on_cancel() -> void:
@@ -175,3 +200,47 @@ func _on_blocker_clicked(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:
 		cancelled.emit()
 		queue_free()
+
+# ============================================================
+# 10. 私有方法 — 派遣任务
+# ============================================================
+
+## 将菜单中的派遣 action 转换为 TaskData 并分发给工人。
+## 每个地块生成一个独立的任务（无父子关系），批量提交到 [UnitManager]。
+func _dispatch_tasks(action: String, selected_tiles: Array) -> void:
+	var task_type: int = _action_to_task_type(action)
+	if task_type == -1:
+		push_warning("TileContextMenu: 未知的派遣操作 '%s'" % action)
+		return
+
+	var tasks: Array[TaskData] = []
+	for tile: Vector2i in selected_tiles:
+		var params: Dictionary = {}
+		if task_type == TaskData.TaskType.PLANT:
+			# 默认种植小麦，后续可从 UI 选择作物品种
+			params["crop_id"] = "wheat_tier1"
+		var task: TaskData = TaskData.create(task_type, tile, params)
+		tasks.append(task)
+
+	if tasks.is_empty():
+		return
+
+	var assigned: int = UnitManager.distribute_tasks(tasks)
+	print("TileContextMenu: 生成 %d 个派遣任务（%s），成功分配 %d 个，%d 个进入待分配池" % [
+		tasks.size(), action, assigned, tasks.size() - assigned
+	])
+
+## 将菜单 action 字符串映射到 [enum TaskData.TaskType] 枚举值。
+## 返回 -1 表示未知 action。
+func _action_to_task_type(action: String) -> int:
+	match action:
+		"task_plow":
+			return TaskData.TaskType.PLOW
+		"task_plant":
+			return TaskData.TaskType.PLANT
+		"task_harvest":
+			return TaskData.TaskType.HARVEST
+		"task_dig":
+			return TaskData.TaskType.DIG
+		_:
+			return -1

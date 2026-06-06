@@ -1,0 +1,21 @@
+[gd_scene format=3 uid="uid://pomqa4bw4iod"]
+
+[ext_resource type="PackedScene" uid="uid://bosioouwwtdd4" path="res://scenes/units/unit_base.tscn" id="1_base"]
+[ext_resource type="Script" uid="uid://1awb7qh1cm32" path="res://scripts/units/player_units/farm_worker.gd" id="2_script"]
+[ext_resource type="Material" uid="uid://bkw4mqh08yvlc" path="res://resources/materials/crops/crops1x1.tres" id="3_bot6y"]
+[ext_resource type="Texture2D" uid="uid://xe6kbrd528tt" path="res://assets/sprites/units/农场工人1.png" id="4_5s3bp"]
+
+[node name="FarmWorker" unique_id=1438332959 instance=ExtResource("1_base")]
+script = ExtResource("2_script")
+
+[node name="Sprite2D" parent="." index="0"]
+texture_filter = 1
+material = ExtResource("3_bot6y")
+scale = Vector2(4, 4)
+texture = ExtResource("4_5s3bp")
+centered = false
+region_enabled = true
+region_rect = Rect2(0, 0, 16, 16)
+
+[node name="CollisionShape2D" parent="." index="5"]
+position = Vector2(32, 32)

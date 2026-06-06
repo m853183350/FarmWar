@@ -42,3 +42,22 @@ signal crop_harvest_requested(tile: Node2D)
 ## [param yields] 产物数组（[Array] of [Dictionary]）：{ "item_id": String, "amount": float }
 ## [param crop_id] 收获的作物标识（如 "wheat_tier1"）。
 signal crop_harvested(yields: Array, crop_id: String)
+
+# ---- 作战单位事件 ----
+
+## 工人任务完成。
+## 由 [UnitManager] 在工人完成一个任务时发出。
+## [param task] 为 TaskData 实例。
+signal worker_task_completed(worker_id: StringName, task)
+
+## 工人任务失败。
+## 由 [FarmWorker] 在任务执行失败时发出。
+signal worker_task_failed(worker_id: StringName, task, reason: String)
+
+## 工人队列清空（全部任务完成）。
+## 由 [FarmWorker] 发出。
+signal worker_queue_empty(worker_id: StringName)
+
+## 工人状态变化。
+## 由 [FarmWorker] 发出。
+signal worker_state_changed(worker_id: StringName, old_state: int, new_state: int)

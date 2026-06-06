@@ -1,0 +1,29 @@
+{
+  "unit_type": "farm_worker",
+  "display_name": "农场工人",
+  "max_health": 50.0,
+  "move_speed": 20.0,
+  "work_speed": 1.0,
+  "tool_level": 1,
+  "max_tasks": 1000,
+  "carry_capacity": 5,
+  "plant_ticks": 20,
+  "harvest_ticks": 30,
+  "plow_ticks": 40,
+  "dig_ticks": 30,
+  "move_ticks": 0,
+  "animations": {
+    "idle": "idle",
+    "walk": "walk",
+    "plow": "plow",
+    "plant": "plant",
+    "harvest": "harvest"
+  },
+  "sounds": {
+    "footstep": "res://assets/audio/sfx/units/footstep.ogg",
+    "plow": "res://assets/audio/sfx/units/plow.ogg",
+    "plant": "res://assets/audio/sfx/units/plant.ogg",
+    "harvest": "res://assets/audio/sfx/units/harvest.ogg",
+    "task_complete": "res://assets/audio/sfx/ui/task_complete.ogg"
+  }
+}
