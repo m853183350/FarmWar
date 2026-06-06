@@ -36,3 +36,9 @@ signal tile_action_completed(action: StringName, tiles: Array, count: int)
 ## 请求收获指定地块上的作物。由 [TileActions] 发出，[Crop] 监听并自行收获。
 ## 这样作物可以自主管理收获逻辑，避免 TileActions 通过 duck typing 调用 harvest()。
 signal crop_harvest_requested(tile: Node2D)
+
+## 作物被收获（携带产物列表和作物标识）。
+## 由 [Crop.harvest] 发出，[Storage] 等系统监听以收集产物。
+## [param yields] 产物数组（[Array] of [Dictionary]）：{ "item_id": String, "amount": float }
+## [param crop_id] 收获的作物标识（如 "wheat_tier1"）。
+signal crop_harvested(yields: Array, crop_id: String)

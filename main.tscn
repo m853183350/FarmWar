@@ -4,6 +4,7 @@
 [ext_resource type="PackedScene" uid="uid://cd0a2c40o4v74" path="res://scenes/world/world.tscn" id="1_ig7tw"]
 [ext_resource type="Script" uid="uid://dywptnwgxovja" path="res://scripts/ui/tick_counter_label.gd" id="2_0xm2m"]
 [ext_resource type="Script" uid="uid://dkgj8vb08bb5w" path="res://scripts/world/tile_selector.gd" id="2_1bvp3"]
+[ext_resource type="Script" path="res://scripts/player/player.gd" id="3_player"]
 
 [node name="Node2D" type="Node2D" unique_id=352653355]
 
@@ -27,3 +28,6 @@ metadata/_custom_type_script = "uid://dywptnwgxovja"
 script = ExtResource("2_1bvp3")
 HOVER_WIDTH = 3.0
 SELECTION_FILL = Color(0.2, 0.6, 1, 0.57254905)
+
+[node name="Player" type="Node" parent="."]
+script = ExtResource("3_player")

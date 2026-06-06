@@ -146,6 +146,10 @@ func harvest() -> Array:
 	var yields: Array = _roll_yields()
 	last_harvest_yields = yields
 
+	# 通过 EventBus 广播产物，供 Storage 等系统收集
+	if EventBus:
+			EventBus.crop_harvested.emit(yields, _crop_info.get("crop_id", "unknown"))
+
 	# 发出信号
 	harvested.emit(yields)
 

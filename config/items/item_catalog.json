@@ -1,0 +1,14 @@
+{
+	"wheat_grain": {
+		"display_name": "小麦粒",
+		"category": "farm_product"
+	},
+	"wheat_seed": {
+		"display_name": "小麦种子",
+		"category": "farm_product"
+	},
+	"straw": {
+		"display_name": "秸秆",
+		"category": "farm_product"
+	}
+}
