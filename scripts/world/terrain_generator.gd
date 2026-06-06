@@ -361,6 +361,8 @@ func _on_tile_action_triggered(action: StringName, tiles: Array) -> void:
 			TileActions.plow_tiles(tiles, world_node)
 		&"dig":
 			TileActions.dig_tiles(tiles, world_node)
+		&"harvest":
+			TileActions.harvest_crop(tiles, world_node)
 		&"plant":
 			TileActions.plant_crop(tiles, "wheat_tier1", world_node)
 		_:

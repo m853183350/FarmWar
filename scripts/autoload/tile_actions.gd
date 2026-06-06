@@ -185,6 +185,53 @@ func plant_crop(tiles: Array, crop_id: String, world_override: Node2D = null) ->
 	return count
 
 # ============================================================
+# 9. 公开方法 — 收获
+# ============================================================
+
+## 收获指定网格坐标上已成熟的作物。
+##
+## 只在满足以下条件的地块上收获：
+##   - 地块类型为 FARMLAND
+##   - 地块上有 Crop 类型的作物占用
+##   - 作物已成熟（[method Crop.is_mature] 返回 true）
+##
+## [param tiles] 网格坐标数组（[Array] of [Vector2i]）。
+## [param world_override] 可选：指定 world 节点（为 null 时自动查找 group "world"）。
+##
+## 返回实际成功收获的作物数量。
+func harvest_crop(tiles: Array, world_override: Node2D = null) -> int:
+	# print("TileActions: 开始收获，目标坐标: %s" % tiles)
+	var world: Node2D = _resolve_world(world_override)
+	if world == null:
+		return 0
+
+	var count: int = 0
+	var total_yields: Dictionary = {}
+
+	for grid_pos in tiles:
+		if not grid_pos is Vector2i:
+			continue
+		var pos: Vector2i = grid_pos as Vector2i
+		var yields: Array = _try_harvest_crop(world, pos)
+		if yields.size() > 0:
+			count += 1
+			for y in yields:
+				var y_dict: Dictionary = y as Dictionary
+				var item_id: String = y_dict.get("item_id", "")
+				var amount: float = y_dict.get("amount", 0.0)
+				if total_yields.has(item_id):
+					total_yields[item_id] = total_yields[item_id] + amount
+				else:
+					total_yields[item_id] = amount
+
+	if count > 0:
+		print("TileActions: 收获完成，收获了 %d 株作物，产物: %s" % [count, total_yields])
+		if notify_on_action and EventBus:
+			EventBus.tile_action_completed.emit("harvest", tiles, count)
+
+	return count
+
+# ============================================================
 # 10. 私有方法 — 配置加载
 # ============================================================
 
@@ -384,6 +431,75 @@ func _try_plant_crop(world: Node2D, grid_pos: Vector2i, crop_scene: PackedScene)
 		crop.plant(tile)
 
 	return true
+
+# ============================================================
+# 10. 私有方法 — 收获辅助
+# ============================================================
+
+## 尝试在单个地块上收获作物。
+##
+## 验证通过后通过 [signal EventBus.crop_harvest_requested] 事件通知作物自行收获，
+## 而非直接调用 [method Crop.harvest]。作物在 [method Crop._on_harvest_requested] 中
+## 检查目标地块是否匹配并执行收获。
+##
+## 返回产物数组（[Array] of [Dictionary]），无作物或未成熟时返回空数组。
+func _try_harvest_crop(world: Node2D, grid_pos: Vector2i) -> Array:
+	var tile: Node2D = _find_tile(world, grid_pos)
+	if tile == null:
+		return []
+
+	# 检查地块是否为农田（TileType.FARMLAND = 3）
+	var tile_data = null
+	if tile.has_method("get_tile_data"):
+		tile_data = tile.get_tile_data()
+	elif tile.has_meta("tile_data"):
+		tile_data = tile.get_meta("tile_data")
+
+	if tile_data == null:
+		return []
+	if tile_data.tile_type != 3:
+		return []
+
+	# 检查是否有作物占用
+	if not tile.has_method("has_occupant_of_type"):
+		return []
+	if not tile.has_occupant_of_type("Crop"):
+		return []
+
+	# 获取作物 occupant（用于成熟度检查和读取产物）
+	var crop_node: Node = null
+	if tile.has_method("get_all_occupants"):
+		var all_occupants: Array = tile.get_all_occupants()
+		for occ: Node in all_occupants:
+			if is_instance_valid(occ) and occ.has_method("harvest"):
+				crop_node = occ
+				break
+
+	if crop_node == null:
+		return []
+
+	# 检查作物是否成熟
+	if crop_node.has_method("is_mature"):
+		if not crop_node.is_mature():
+			return []
+
+	# 通过事件驱动收获 — 作物自行响应并收获
+	# Godot 信号是同步执行的，emit 返回后作物已完成收获逻辑
+	if EventBus:
+		EventBus.crop_harvest_requested.emit(tile)
+	else:
+		# 降级方案：直接调用 harvest()
+		if crop_node.has_method("harvest"):
+			crop_node.harvest()
+		return []
+
+	# 从作物节点读取产物（queue_free 延迟释放，节点仍可访问）
+	if is_instance_valid(crop_node):
+		var yields = crop_node.get("last_harvest_yields")
+		if yields is Array:
+			return yields as Array
+
+	return []
 
 # ============================================================
 # 10. 私有方法 — 挖掘产出

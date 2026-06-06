@@ -1,6 +1,6 @@
 ## 地块操作上下文菜单。
 ##
-## 在地块框选完成后弹出，提供操作选项（翻耕、挖掘、取消）。
+## 在地块框选完成后弹出，提供操作选项（翻耕、挖掘、种植、收获、取消）。
 ## 使用全屏透明遮罩阻断世界交互，避免点击空地触发新选择。
 ##
 ## 使用方式：
@@ -11,7 +11,7 @@ class_name TileContextMenu extends CanvasLayer
 # 1. 信号
 # ============================================================
 
-## 菜单项被选中。action 为 "plow"/"dig" 等，tiles 为选中的地块坐标数组。
+## 菜单项被选中。action 为 "plow"/"dig"/"plant"/"harvest" 等，tiles 为选中的地块坐标数组。
 signal action_selected(action: String, tiles: Array)
 
 ## 菜单被取消（点遮罩或取消按钮）。
@@ -25,6 +25,7 @@ const MENU_ITEMS: Array[Dictionary] = [
 	{ "text": "翻耕", "action": "plow" },
 	{ "text": "挖掘", "action": "dig" },
 	{ "text": "种植", "action": "plant" },
+	{ "text": "收获", "action": "harvest" },
 ]
 
 const BUTTON_MIN_WIDTH: float = 160.0

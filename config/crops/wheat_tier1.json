@@ -17,25 +17,25 @@
 
 	"growth_stages": [
 		{
-			"name": "种子",
-			"tick_duration": 0,
+			"name": "stage_0",
+			"tick_duration": 20,
 			"frame_x": 0,
 			"passable": true
 		},
 		{
-			"name": "发芽",
-			"tick_duration": 40,
+			"name": "stage_1",
+			"tick_duration": 20,
 			"frame_x": 8,
 			"passable": true
 		},
 		{
-			"name": "生长",
-			"tick_duration": 60,
+			"name": "stage_2",
+			"tick_duration": 20,
 			"frame_x": 16,
 			"passable": true
 		},
 		{
-			"name": "成熟",
+			"name": "stage_3",
 			"tick_duration": -1,
 			"frame_x": 24,
 			"passable": true

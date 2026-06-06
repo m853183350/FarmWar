@@ -12,7 +12,7 @@
 ##   1. 子类覆写三个方法
 ##   2. 调用 [method plant] 将作物放置到农田地块上
 ##   3. TickSystem 自动驱动生长
-##   4. 外部调用 [method harvest] 收获
+##   4. 通过 [signal EventBus.crop_harvest_requested] 事件触发收获
 class_name Crop extends Sprite2D
 
 # ============================================================
@@ -57,6 +57,10 @@ var health: float = 1.0
 ## 所在地块引用。
 var tile: Node2D = null
 
+## 最近一次收获的产物列表。供 [TileActions] 在发出收获事件后读取。
+## 每次调用 [method harvest] 时更新。
+var last_harvest_yields: Array = []
+
 # ============================================================
 # 6. 私有变量
 # ============================================================
@@ -64,6 +68,7 @@ var tile: Node2D = null
 var _stage_data: Array = []
 var _crop_info: Dictionary = {}
 var _tick_connected: bool = false
+var _harvest_event_connected: bool = false
 
 # ============================================================
 # 8. 生命周期方法
@@ -82,6 +87,11 @@ func _ready() -> void:
 		TickSystem.tick_elapsed.connect(_on_tick)
 		_tick_connected = true
 
+	# 监听收获事件 — 作物自主管理收获，避免外部通过 duck typing 调用
+	if EventBus:
+		EventBus.crop_harvest_requested.connect(_on_harvest_requested)
+		_harvest_event_connected = true
+
 	# 设置初始视觉帧
 	_apply_stage_visuals()
 	# 若初始阶段 duration=0，立刻推进到下一个阶段
@@ -94,6 +104,9 @@ func _exit_tree() -> void:
 	if _tick_connected and TickSystem:
 		TickSystem.tick_elapsed.disconnect(_on_tick)
 		_tick_connected = false
+	if _harvest_event_connected and EventBus:
+		EventBus.crop_harvest_requested.disconnect(_on_harvest_requested)
+		_harvest_event_connected = false
 
 # ============================================================
 # 9. 公开方法 — 种植
@@ -118,15 +131,20 @@ func plant(target_tile: Node2D) -> void:
 ## 收获作物，返回产物数组。
 ## 只有处于最终阶段（成熟）时才能收获。
 ##
+## 通常由 [signal EventBus.crop_harvest_requested] 事件触发，而非直接调用。
+## 也可以被 [TileActions] 等系统直接调用（向后兼容）。
+##
 ## 返回 [Array] of [Dictionary]：
-##   { "item_id": String, "amount": float, "probability": float }
-##   只有随机判定通过的产物才会出现在返回数组中。
+##   { "item_id": String, "amount": float }
+##   只有随机判定通过的产物才会出现在返回数组中。未成熟时返回空数组。
 func harvest() -> Array:
 	if not _is_mature():
 		push_warning("Crop: 作物 %s 尚未成熟，无法收获" % _crop_info.get("crop_id", "unknown"))
+		last_harvest_yields = []
 		return []
 
 	var yields: Array = _roll_yields()
+	last_harvest_yields = yields
 
 	# 发出信号
 	harvested.emit(yields)
@@ -191,7 +209,6 @@ func _advance_stage() -> void:
 
 ## 根据当前阶段设置 region_rect（视觉帧）。
 func _apply_stage_visuals() -> void:
-	print("enter next stage: %d" % growth_stage)
 	var stage_info: Dictionary = _stage_data[growth_stage]
 	var frame_x: int = stage_info.get("frame_x", 0)
 	region_enabled = true
@@ -221,6 +238,16 @@ func _roll_yields() -> Array:
 			})
 
 	return result
+
+# ============================================================
+# 10. 私有方法 — 收获事件响应
+# ============================================================
+
+## 响应 [signal EventBus.crop_harvest_requested] 事件。
+## 检查目标地块是否为自身所在地块，匹配且成熟时执行收获。
+func _on_harvest_requested(target_tile: Node2D) -> void:
+	if target_tile == tile and _is_mature():
+		harvest()
 
 # ============================================================
 # 11. 虚方法 — 子类必须覆写

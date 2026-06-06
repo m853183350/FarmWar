@@ -32,3 +32,7 @@ signal tile_action_triggered(action: StringName, tiles: Array)
 
 ## 地块操作完成。action: "plow"/"dig"/etc., count: 成功转化的数量。
 signal tile_action_completed(action: StringName, tiles: Array, count: int)
+
+## 请求收获指定地块上的作物。由 [TileActions] 发出，[Crop] 监听并自行收获。
+## 这样作物可以自主管理收获逻辑，避免 TileActions 通过 duck typing 调用 harvest()。
+signal crop_harvest_requested(tile: Node2D)

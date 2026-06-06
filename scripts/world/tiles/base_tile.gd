@@ -156,10 +156,24 @@ func remove_occupant(node: Node) -> void:
 		occupant_removed.emit(node)
 
 ## 地块上是否有指定类的实例。
+##
+## 检查顺序：
+##   1. 先使用 [method Object.is_class] 检查引擎内置类（如 Node2D、Sprite2D 等）
+##   2. 若失败，遍历脚本继承链，通过 [method Script.get_global_name] 匹配自定义 class_name
+##      这样即使 Godot 的 is_class 对继承链中的自定义类名失效，也能正确识别。
 func has_occupant_of_type(klass_name: String) -> bool:
 	for occ: Node in occupants:
-		if is_instance_valid(occ) and occ.is_class(klass_name):
+		if not is_instance_valid(occ):
+			continue
+		# 1. 优先使用引擎内置的 is_class
+		if occ.is_class(klass_name):
 			return true
+		# 2. 兜底：遍历脚本继承链，匹配自定义 class_name
+		var scr: Script = occ.get_script() as Script
+		while scr != null:
+			if scr.get_global_name() == klass_name:
+				return true
+			scr = scr.get_base_script()
 	return false
 
 ## 获取地块上所有内容物。
