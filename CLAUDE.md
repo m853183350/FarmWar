@@ -40,35 +40,9 @@ godot --export-release "Windows Desktop" build/
 
 The game is divided into **in-match systems** and **meta-game systems**:
 
-**In-match (10 systems):**
-1. 地块系统 (Plot/Tile System) — grid-based land management
-2. 种植系统 (Planting System) — crop growth & harvest lifecycle
-3. 作战单位系统 (Combat Unit System) — army units & battles
-4. 商店系统 (Shop System) — buying/selling
-5. 经济系统 (Economy System) — resource flow
-6. 仓库系统 (Storage System) — inventory
-7. 道具和buff系统 (Items & Buffs) — consumables & effects
-8. 敌人AI (Enemy AI) — enemy behavior
-9. 天气系统 (Weather System) — environmental effects
-10. 科技树系统 (Tech Tree) — research & upgrades
-11. 玩家UI系统
-
-**Meta-game (3 systems):**
-1. Game flow control (start/end/restart)
-2. Out-of-match progression (permanent upgrades)
-3. Settings
-
-**Key design:** Crops are grouped by real-world biological "科" (family); each family has unique yields, tech trees, and units. The core loop is about efficient resource use to grow stronger armies.
+见 /Docs/整体设计.md
 
 ## Directory Structure
-
-```
-scenes/          # .tscn scene files (player/, enemy/, ui/)
-scripts/         # GDScript (player/, enemy/, ui/, autoload/)
-resources/       # .tres resource files
-assets/          # Art, audio, etc.
-Docs/            # Documentation — mirrors scripts/ structure, one .md per .gd
-```
 
 **important** from `Docs/目录结构.md`. AI can edit this file when necessary.
 
@@ -100,6 +74,7 @@ Docs/            # Documentation — mirrors scripts/ structure, one .md per .gd
 - Autoloads (`scripts/autoload/`) for cross-scene shared logic; never cross-reference nodes between scenes.
 - Scene root node type must match its script's `extends` type.
 - One Scene can only have 1 script. If there's multiple scripts, use child node.
+- If an object has more than 5 attributes, use json file in /config
 
 **Class-internal declaration order:**
 1. Signals
