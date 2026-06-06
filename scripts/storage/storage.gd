@@ -36,7 +36,7 @@ const PARTITION_CONFIG: Dictionary = {
 	"pending_2": {"display_name": "待定2", "order": 3},
 }
 
-
+## 按下Tab键时打印仓库内容到控制台，供调试使用。
 func _input(event):
 	if event is InputEventKey and event.pressed and event.keycode == KEY_TAB:
 		print_contents()
@@ -285,8 +285,8 @@ func _get_sorted_partitions() -> Array:
 func _get_display_name(item_id: String) -> String:
 	if catalog.has(item_id):
 		var entry: Dictionary = catalog[item_id] as Dictionary
-		var name: String = entry.get("display_name", "")
-		if not name.is_empty():
+		var name_: String = entry.get("display_name", "")
+		if not name_.is_empty():
 			return name
 	return item_id
 
