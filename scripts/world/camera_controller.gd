@@ -10,6 +10,7 @@ extends Camera2D
 # 3. 常量
 # ============================================================
 const CONFIG_PATH: String = "res://config/control/player_key_bind.json"
+const KEY_UITLS = preload("res://scripts/utils/string_to_key.gd")
 # ============================================================
 # 4. @export 变量
 # ============================================================
@@ -42,8 +43,8 @@ const CONFIG_PATH: String = "res://config/control/player_key_bind.json"
 var _scroll_velocity: Vector2 = Vector2.ZERO
 var _target_zoom: float = 1.0
 var _tile_size: int = 64
-var _zoom_in_button: MouseButton = MOUSE_BUTTON_WHEEL_UP
-var _zoom_out_button: MouseButton = MOUSE_BUTTON_WHEEL_DOWN
+var _zoom_in_button: MouseButton = MOUSE_BUTTON_WHEEL_DOWN
+var _zoom_out_button: MouseButton = MOUSE_BUTTON_WHEEL_UP
 
 # ============================================================
 # 7. @onready 变量
@@ -184,21 +185,21 @@ func _apply_config() -> void:
 	var bindings: Variant = cc.get("bindings")
 	if bindings is Dictionary:
 		var b: Dictionary = bindings as Dictionary
-		_zoom_in_button = _string_to_mouse_button(str(b.get("zoom_in", "MOUSE_BUTTON_WHEEL_UP")))
-		_zoom_out_button = _string_to_mouse_button(str(b.get("zoom_out", "MOUSE_BUTTON_WHEEL_DOWN")))
+		_zoom_in_button = KEY_UITLS._string_to_mouse_button(str(b.get("zoom_in", "MOUSE_BUTTON_WHEEL_UP")))
+		_zoom_out_button = KEY_UITLS._string_to_mouse_button(str(b.get("zoom_out", "MOUSE_BUTTON_WHEEL_DOWN")))
 
-## 将字符串形式的鼠标按键名转换为 [enum MouseButton] 枚举值。
-func _string_to_mouse_button(s: String) -> MouseButton:
-	match s:
-		"MOUSE_BUTTON_LEFT": return MOUSE_BUTTON_LEFT
-		"MOUSE_BUTTON_RIGHT": return MOUSE_BUTTON_RIGHT
-		"MOUSE_BUTTON_MIDDLE": return MOUSE_BUTTON_MIDDLE
-		"MOUSE_BUTTON_WHEEL_UP": return MOUSE_BUTTON_WHEEL_UP
-		"MOUSE_BUTTON_WHEEL_DOWN": return MOUSE_BUTTON_WHEEL_DOWN
-		"MOUSE_BUTTON_WHEEL_LEFT": return MOUSE_BUTTON_WHEEL_LEFT
-		"MOUSE_BUTTON_WHEEL_RIGHT": return MOUSE_BUTTON_WHEEL_RIGHT
-		"MOUSE_BUTTON_XBUTTON1": return MOUSE_BUTTON_XBUTTON1
-		"MOUSE_BUTTON_XBUTTON2": return MOUSE_BUTTON_XBUTTON2
-		_:
-			push_error("CameraController: 无法识别的鼠标按键名: %s" % s)
-			return MOUSE_BUTTON_NONE
+## 将字符串形式的鼠标按键名转换为 [enum MouseButton] 枚举值。该功能已移动到utils/string_to_key.gd中。
+# func _string_to_mouse_button(s: String) -> MouseButton:
+# 	match s:
+# 		"MOUSE_BUTTON_LEFT": return MOUSE_BUTTON_LEFT
+# 		"MOUSE_BUTTON_RIGHT": return MOUSE_BUTTON_RIGHT
+# 		"MOUSE_BUTTON_MIDDLE": return MOUSE_BUTTON_MIDDLE
+# 		"MOUSE_BUTTON_WHEEL_UP": return MOUSE_BUTTON_WHEEL_UP
+# 		"MOUSE_BUTTON_WHEEL_DOWN": return MOUSE_BUTTON_WHEEL_DOWN
+# 		"MOUSE_BUTTON_WHEEL_LEFT": return MOUSE_BUTTON_WHEEL_LEFT
+# 		"MOUSE_BUTTON_WHEEL_RIGHT": return MOUSE_BUTTON_WHEEL_RIGHT
+# 		"MOUSE_BUTTON_XBUTTON1": return MOUSE_BUTTON_XBUTTON1
+# 		"MOUSE_BUTTON_XBUTTON2": return MOUSE_BUTTON_XBUTTON2
+# 		_:
+# 			push_error("CameraController: 无法识别的鼠标按键名: %s" % s)
+# 			return MOUSE_BUTTON_NONE
