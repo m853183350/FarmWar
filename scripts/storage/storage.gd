@@ -23,6 +23,7 @@ signal contents_changed(partition: String)
 
 ## 物品目录配置文件路径。
 const ITEM_CATALOG_PATH: String = "res://config/items/item_catalog.json"
+const DEBUG_OVERLAY = preload("res://scripts/ui/debug_overlay.gd")
 
 ## 控制台打印列宽。
 const DISPLAY_COLUMN_WIDTH: int = 24
@@ -165,6 +166,22 @@ func print_contents() -> void:
 
 	print(header)
 
+
+## 在F3调试界面显示仓库内容
+func _debug_draw_storage() -> void:
+	var debug_str: String = "Storage Contents:\n"
+	for partition: String in contents:
+		debug_str += "  [%s]\n" % partition
+		var partition_data: Dictionary = contents[partition] as Dictionary
+		if partition_data.is_empty():
+			debug_str += "    (empty)\n"
+		else:
+			for item_id: String in partition_data:
+				var amount: float = partition_data[item_id] as float
+				debug_str += "    %s: %.2f\n" % [item_id, amount]
+	# DEBUG_OVERLAY.set_entry("Storage",debug_str)
+	DebugOverlay.set_entry("Storage",debug_str)
+
 # ============================================================
 # 10. 私有方法 — 初始化
 # ============================================================
@@ -199,6 +216,7 @@ func _load_catalog() -> void:
 		catalog = data as Dictionary
 	else:
 		push_error("Storage: 物品目录配置文件顶层应为 JSON 对象")
+	_debug_draw_storage()
 
 # ============================================================
 # 10. 私有方法 — 事件响应
@@ -216,6 +234,7 @@ func _on_crop_harvested(yields: Array, _crop_id: String) -> void:
 		_deposit_item(item_id, amount)
 
 	# print_contents()
+	_debug_draw_storage()
 
 # ============================================================
 # 10. 私有方法 — 物品操作

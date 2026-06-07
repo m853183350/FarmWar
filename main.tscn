@@ -25,8 +25,7 @@ text = "0"
 script = ExtResource("2_0xm2m")
 metadata/_custom_type_script = "uid://dywptnwgxovja"
 
-[node name="TileSelectorLayer" type="CanvasLayer" parent="."]
-layer = 1
+[node name="TileSelectorLayer" type="CanvasLayer" parent="." unique_id=1718753049]
 follow_viewport_enabled = true
 
 [node name="TileSelector" type="Node2D" parent="TileSelectorLayer" unique_id=521783773]

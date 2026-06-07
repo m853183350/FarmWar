@@ -11,6 +11,7 @@ func _ready() -> void:
 
 # Called every frame. 'delta' is the elapsed time since the previous frame.
 func _process(delta: float) -> void:
+	DebugOverlay.set_entry("tick", TickSystem.get_tick_count())
 	pass
 
 func _print_loop():

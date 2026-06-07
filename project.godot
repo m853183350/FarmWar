@@ -21,6 +21,7 @@ TickSystem="*res://scripts/autoload/tick_system.gd"
 EventBus="*res://scripts/autoload/event_bus.gd"
 TileActions="*res://scripts/autoload/tile_actions.gd"
 UnitManager="*res://scripts/units/unit_manager.gd"
+DebugOverlay="*res://scripts/ui/debug_overlay.gd"
 
 [display]
 
