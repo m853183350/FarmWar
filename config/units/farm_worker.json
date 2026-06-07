@@ -2,7 +2,7 @@
   "unit_type": "farm_worker",
   "display_name": "农场工人",
   "max_health": 50.0,
-  "move_speed": 2.0,
+  "move_speed": 12.0,
   "work_speed": 1.0,
   "tool_level": 1,
   "max_tasks": 1000,

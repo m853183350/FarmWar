@@ -5,7 +5,7 @@
 ##
 ## 特性：
 ##   - 任务驱动 AI：通过 [method add_task] 追加任务，每 tick 自动执行
-##   - 隐式移动：执行地块操作时自动导航到目标相邻格
+##   - 隐式移动：执行地块操作时通过 HPA* 寻路自动导航到目标地块中心
 ##   - 父子任务：批量操作（如框选 5 块地种植）通过父任务分组，子任务依次执行
 ##   - 配置驱动：属性从 [code]config/units/farm_worker.json[/code] 加载
 ##
@@ -61,6 +61,11 @@ var plow_ticks: int = 40
 
 ## 挖掘操作基础 tick 数。
 var dig_ticks: int = 30
+
+## 工作可达距离（曼哈顿距离阈值，像素）。
+## 工人与地块中心的世界坐标曼哈顿距离小于此值时视为已达工作条件。
+## 默认值为 1 个地块宽度（64px），可运行时修改以调整工作触发范围。
+var work_reach_distance: float = 64.0
 
 # ============================================================
 # 6. 私有变量
@@ -278,20 +283,13 @@ func _start_tile_task(task: TaskData, base_ticks: int, validator: Callable) -> v
 	task.status = TaskData.TaskStatus.IN_PROGRESS
 	task.total_ticks = maxi(1, int(ceil(float(base_ticks) / work_speed)))
 
-	# 检查是否已在目标地块相邻格
+	# 检查是否已达工作条件（曼哈顿距离 < work_reach_distance）
 	if is_adjacent_to(task.target_tile):
-		# 已在相邻格，直接进入工作阶段
+		# 已在可达范围内，直接进入工作阶段
 		_begin_work_phase(task)
 	else:
-		# 需要移动：找到最近的相邻可通行格
-		var move_target: Vector2i = _find_nearest_adjacent(task.target_tile)
-		if move_target == Vector2i.ZERO and not is_adjacent_to(task.target_tile):
-			# 找不到可到达的相邻格（被包围）
-			task.status = TaskData.TaskStatus.FAILED
-			_push_failed(task, "目标地块不可到达")
-			return
-		# 进入移动阶段
-		_set_move_target_world(_tile_to_world(move_target))
+		# 需要移动：通过 HPA* 寻路直接导航到目标地块中心
+		_set_move_target_world(_tile_to_world(task.target_tile))
 		_set_state(UnitState.MOVING)
 		animation_controller.play("walk")
 		_start_footstep_sfx()
@@ -328,9 +326,8 @@ func _continue_tile_task(task: TaskData) -> void:
 		return  # 还在移动中，等待 move_completed
 
 	if state == UnitState.IDLE and not is_adjacent_to(task.target_tile):
-		# 移动完成但不在相邻格（可能目标移动了），重新寻路
-		var move_target: Vector2i = _find_nearest_adjacent(task.target_tile)
-		_set_move_target_world(_tile_to_world(move_target))
+		# 移动完成但未达工作条件，重新导航到目标地块中心
+		_set_move_target_world(_tile_to_world(task.target_tile))
 		_set_state(UnitState.MOVING)
 		animation_controller.play("walk")
 		_start_footstep_sfx()
@@ -532,8 +529,22 @@ func _on_move_completed() -> void:
 					if is_adjacent_to(current.target_tile):
 						_begin_work_phase(current)
 
-## 查找目标地块最近的可通行相邻格。
-## 返回 [code]Vector2i.ZERO[/code] 表示无可通行相邻格（被包围）。
+## 覆写基类：使用曼哈顿距离判断是否已达工作条件。
+##
+## 计算工人 [member grid_position] 到目标地块中心
+## [code](tile.x * 64 + 32, tile.y * 64 + 32)[/code] 的曼哈顿距离，
+## 小于 [member work_reach_distance]（默认 64px）时视为可达。
+func is_adjacent_to(tile: Vector2i) -> bool:
+	var half_tile: float = float(TILE_SIZE) / 2.0
+	var tile_center: Vector2 = Vector2(
+		float(tile.x) * float(TILE_SIZE) + half_tile,
+		float(tile.y) * float(TILE_SIZE) + half_tile
+	)
+	var dx := absf(grid_position.x - tile_center.x)
+	var dy := absf(grid_position.y - tile_center.y)
+	return (dx + dy) < work_reach_distance
+
+## 查找目标地块最近的可通行相邻格（已弃用，仅保留向后兼容）。
 func _find_nearest_adjacent(target_tile: Vector2i) -> Vector2i:
 	var world: Node2D = _get_world()
 	if world == null:
@@ -644,7 +655,7 @@ func _get_tile_data(tile: Node2D) -> Resource:
 
 ## 网格坐标转世界坐标（地块中心）。
 func _tile_to_world(tile: Vector2i) -> Vector2:
-	return Vector2(tile.x * TILE_SIZE, tile.y * TILE_SIZE)
+	return Vector2(tile.x * TILE_SIZE + TILE_SIZE / 2.0, tile.y * TILE_SIZE + TILE_SIZE / 2.0)
 
 # ============================================================
 # 10. 私有方法 — 工具

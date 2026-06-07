@@ -29,6 +29,7 @@ signal task_assigned(task: TaskData, worker_id: StringName)
 
 ## 农场工人场景路径。
 const FARM_WORKER_SCENE: String = "res://scenes/units/player_units/farm_worker.tscn"
+const debug_print_flag: bool = true
 
 # ============================================================
 # 5. 公开变量
@@ -54,7 +55,8 @@ var _worker_id_counter: int = 0
 ## 在指定网格位置生成一个农场工人。
 ## 返回生成的 [FarmWorker] 实例。场景加载失败或 world 不可用时返回 null。
 func spawn_worker(grid_pos: Vector2i) -> FarmWorker:
-	print("UnitManager: 请求生成工人于 %s" % grid_pos)
+	if debug_print_flag:
+		print("UnitManager: 请求生成工人于 %s" % grid_pos)
 	var world: Node2D = _get_world()
 	if world == null:
 		push_error("UnitManager: 无法获取 world 节点，不能生成工人")
@@ -78,7 +80,8 @@ func spawn_worker(grid_pos: Vector2i) -> FarmWorker:
 	world.add_child(worker)
 	_register_worker(worker)
 
-	print("UnitManager: 生成工人 %s 于 %s" % [worker.unit_id, grid_pos])
+	if debug_print_flag:
+		print("UnitManager: 生成工人 %s 于 %s" % [worker.unit_id, grid_pos])
 	worker_spawned.emit(worker.unit_id)
 	return worker
 
@@ -142,6 +145,8 @@ func get_pending_task_count() -> int:
 ## 优先分配给空闲工人，剩余任务进入全局待分配池。
 ## 返回成功分配的任务数。
 func distribute_tasks(tasks: Array[TaskData]) -> int:
+	if debug_print_flag:
+		print("UnitManager: 开始请求分配 %d 个任务" % tasks.size())
 	var assigned_count: int = 0
 	var idle_workers: Array[FarmWorker] = find_idle_workers(tasks.size() * 2)
 

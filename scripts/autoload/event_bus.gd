@@ -15,6 +15,10 @@ extends Node
 ## 地形生成完成。
 signal terrain_generated()
 
+## 地形变更（地块类型转换、建筑放置等）。
+## [param tiles] 变更的地块网格坐标数组 [Array] of [Vector2i]。
+signal terrain_changed(tiles: Array)
+
 ## 游戏状态变化（暂停/恢复/结束等）。
 signal game_state_changed(new_state: StringName)
 

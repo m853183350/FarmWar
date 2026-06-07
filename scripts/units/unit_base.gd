@@ -6,7 +6,7 @@
 ## 移动系统说明：
 ##   - 逻辑移动在 [method _on_tick] 中驱动，每 tick 前进 move_speed * tick_delta 的距离
 ##   - 画面在 [method _process] 中做插值，确保高于 20FPS 的显示帧率下视觉平滑
-##   - 当前使用直线移动；A* 寻路框架已预留，待 pathfinding.gd 实现后接入
+##   - 优先使用 HPA* 寻路（[Pathfinding] 模块），无路径时降级为直线移动
 ##
 ## 子类必须：
 ##   - 覆写 [method _get_unit_type_name] 返回单位类型标识
@@ -20,6 +20,8 @@ extends CharacterBody2D
 # ============================================================
 
 const ZIndexConfig = preload("res://scripts/utils/z_index_config.gd")
+
+const debug_print_flag: bool = false
 
 # ============================================================
 # 1. 信号
@@ -157,6 +159,7 @@ func _ready() -> void:
 	# 设置初始状态
 	_set_state(UnitState.IDLE)
 	selection_indicator.visible = false
+	update_z_index()
 
 func _exit_tree() -> void:
 	if _tick_connected and TickSystem:
@@ -214,11 +217,12 @@ func get_adjacent_cells(tile: Vector2i) -> Array[Vector2i]:
 		Vector2i(tile.x, tile.y + 1),
 		Vector2i(tile.x - 1, tile.y),
 		Vector2i(tile.x + 1, tile.y),
+		tile
 	]
 
 ## 获取当前所在地块坐标。
 func get_current_tile() -> Vector2i:
-	return Vector2i(roundi(grid_position.x / TILE_SIZE), roundi(grid_position.y / TILE_SIZE))
+	return Vector2i(int(grid_position.x / TILE_SIZE), int(grid_position.y / TILE_SIZE))
 
 ## 是否在指定地块的相邻格。
 func is_adjacent_to(tile: Vector2i) -> bool:
@@ -285,8 +289,11 @@ func _on_tick(_delta: float) -> void:
 # ============================================================
 
 ## 执行移动阶段（每 tick 由 _on_tick 调用）。
-## 直接向目标位置直线移动；A* 寻路在 _move_path 实现后启用。
+## 优先沿 HPA* 路径点移动，无路径时降级为直线移动。
 func _execute_move_phase(_delta: float) -> void:
+	if debug_print_flag:
+		print("UnitBase: 执行移动阶段, 当前状态: %d, 位置: %s, 目标: %s" % [state, grid_position, _target_position])
+
 	if state != UnitState.MOVING:
 		return
 
@@ -309,12 +316,27 @@ func _execute_move_phase(_delta: float) -> void:
 			_try_find_path()
 		return
 
-	# 直接直线移动（A* 未实现前的降级方案）
-	_direct_move(_delta)
-	update_z_index()
+	# 如果有路径点，沿路径移动（含动态避障检测）
+	if not _move_path.is_empty():
+		_follow_path(_delta)
+		update_z_index()
+		return
 
-## 直线移动到目标（降级方案，A* 实现后替换）。
+	# 无路径时尝试寻路
+	_try_find_path()
+
+	# 若寻路成功则本 tick 不移动（下一 tick 开始沿路径移动）
+	# 若寻路失败，降级为直线移动
+	if _move_path.is_empty():
+		_direct_move(_delta)
+		update_z_index()
+
+## 直线移动到目标（无 HPA* 路径时的降级方案）。
 func _direct_move(_delta: float) -> void:
+	if debug_print_flag:
+		print("UnitBase: 执行直线移动, 当前状态: %d, 位置: %s, 目标: %s" % [state, grid_position, _target_position])
+
+
 	var direction: Vector2 = _target_position - grid_position
 	var distance: float = direction.length()
 
@@ -341,19 +363,87 @@ func _direct_move(_delta: float) -> void:
 	global_position = grid_position
 	update_z_index()
 
-## 尝试寻路到目标位置（A* 框架，待实现）。
-func _try_find_path() -> void:
-	# TODO: 接入 A* 寻路系统（pathfinding.gd）
-	# 当前降级为直线移动
-	_find_path_fail_count += 1
-
-	if _find_path_fail_count >= FIND_PATH_FAIL_MAX:
-		# 连续失败达到上限，执行瞬移
-		_teleport_to_target()
+## 沿 _move_path 路径点依次移动。
+## 包含动态避障检测：子目标地块变为不可通过时触发重新寻路。
+func _follow_path(_delta: float) -> void:
+	if _path_index >= _move_path.size():
 		return
 
-	# 暂时使用直线移动（不设置 _waiting_for_path）
-	pass
+	# 动态避障：检查当前子目标是否仍可通过
+	var sub_target: Vector2 = _move_path[_path_index]
+	var sub_target_tile: Vector2i = Vector2i(
+		int(sub_target.x / TILE_SIZE),
+		int(sub_target.y / TILE_SIZE)
+	)
+	if not Pathfinding.is_tile_passable(sub_target_tile):
+		# 路径被阻挡，清空并等待重新寻路
+		_move_path.clear()
+		_waiting_for_path = true
+		_path_wait_timer = 0.0
+		move_blocked.emit("path_blocked")
+		return
+
+	# 向当前子目标移动
+	var direction: Vector2 = sub_target - grid_position
+	var distance: float = direction.length()
+
+	if distance < 1.0:
+		# 到达当前子目标，前进到下一个
+		_path_index += 1
+		if _path_index >= _move_path.size():
+			# 到达最终目标
+			grid_position = _target_position
+			_next_tick_position = _target_position
+			_move_path.clear()
+			_set_state(UnitState.IDLE)
+			move_completed.emit()
+			update_z_index()
+			return
+		# 继续追踪下一个路径点
+		sub_target = _move_path[_path_index]
+		direction = sub_target - grid_position
+		distance = direction.length()
+
+	var step: float = move_speed * TILE_SIZE * TickSystem.tick_interval
+	var move_dir: Vector2 = direction.normalized()
+	var move_dist: float = minf(step, distance)
+
+	_prev_tick_position = grid_position
+	grid_position += move_dir * move_dist
+	_next_tick_position = grid_position
+
+	# 更新朝向
+	if move_dir.x != 0.0:
+		facing_direction = Vector2(signf(move_dir.x), 0.0)
+
+	# 同步全局位置
+	global_position = grid_position
+	update_z_index()
+
+## 尝试寻路到目标位置，调用 HPA* 寻路模块。
+func _try_find_path() -> void:
+	if debug_print_flag:
+		print("UnitBase: 尝试HPA*寻路, 当前状态: %d, 位置: %s, 目标: %s" % [state, grid_position, _target_position])
+
+	var start_tile: Vector2i = get_current_tile()
+	var target_tile: Vector2i = Vector2i(
+		int(_target_position.x / TILE_SIZE),
+		int(_target_position.y / TILE_SIZE)
+	)
+
+	_move_path = Pathfinding.find_path(start_tile, target_tile)
+
+	if _move_path.is_empty():
+		_find_path_fail_count += 1
+		if _find_path_fail_count >= FIND_PATH_FAIL_MAX:
+			_teleport_to_target()
+		else:
+			_waiting_for_path = true
+			_path_wait_timer = 0.0
+	else:
+		_find_path_fail_count = 0
+		_path_index = 0
+		_waiting_for_path = false
 
 ## 瞬移到目标位置（卡死时的兜底手段）。
 func _teleport_to_target() -> void:
@@ -370,6 +460,9 @@ func _teleport_to_target() -> void:
 
 ## 设置移动目标（世界坐标）并进入 MOVING 状态。
 func _set_move_target_world(world_pos: Vector2) -> void:
+	if debug_print_flag:
+		print("UnitBase: 设置移动目标,并进入 MOVING 状态, 当前状态: %d, 位置: %s, 新目标: %s" % [state, grid_position, world_pos])
+
 	_target_position = world_pos
 	_find_path_fail_count = 0
 	_waiting_for_path = false
