@@ -1,0 +1,15 @@
+{
+  "camera": {
+    "edge_margin": 20,
+    "max_scroll_speed": 600.0,
+    "scroll_acceleration": 2000.0,
+    "min_zoom": 0.3,
+    "max_zoom": 4.0,
+    "zoom_step": 0.1,
+    "zoom_smoothness": 10.0,
+    "bindings": {
+      "zoom_in": "MOUSE_BUTTON_WHEEL_DOWN",
+      "zoom_out": "MOUSE_BUTTON_WHEEL_UP"
+    }
+  }
+}
