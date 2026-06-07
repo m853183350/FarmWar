@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://dxalidq8gcw8y" path="res://scripts/world/camera_controller.gd" id="1_0xm2m"]
 [ext_resource type="PackedScene" uid="uid://cd0a2c40o4v74" path="res://scenes/world/world.tscn" id="1_ig7tw"]
 [ext_resource type="Script" uid="uid://dywptnwgxovja" path="res://scripts/ui/tick_counter_label.gd" id="2_0xm2m"]
-[ext_resource type="Script" uid="uid://dkgj8vb08bb5w" path="res://scripts/world/tile_selector.gd" id="2_1bvp3"]
+[ext_resource type="Script" uid="uid://bqbpgsvwg8hse" path="res://scripts/ui/tile_selector.gd" id="2_1bvp3"]
 [ext_resource type="Script" uid="uid://cg1yl6tccvee5" path="res://scripts/player/player.gd" id="3_player"]
 [ext_resource type="Script" uid="uid://cg53h8t344vsl" path="res://scripts/units/debugger.gd" id="6_7mycd"]
 
@@ -25,7 +25,11 @@ text = "0"
 script = ExtResource("2_0xm2m")
 metadata/_custom_type_script = "uid://dywptnwgxovja"
 
-[node name="TileSelector" type="Node2D" parent="." unique_id=521783773]
+[node name="TileSelectorLayer" type="CanvasLayer" parent="."]
+layer = 1
+follow_viewport_enabled = true
+
+[node name="TileSelector" type="Node2D" parent="TileSelectorLayer" unique_id=521783773]
 script = ExtResource("2_1bvp3")
 HOVER_WIDTH = 3.0
 SELECTION_FILL = Color(0.2, 0.6, 1, 0.57254905)

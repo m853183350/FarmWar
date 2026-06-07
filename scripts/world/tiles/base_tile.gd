@@ -10,6 +10,12 @@
 class_name BaseTile extends Sprite2D
 
 # ============================================================
+# 3. 常量
+# ============================================================
+
+const ZIndexConfig = preload("res://scripts/utils/z_index_config.gd")
+
+# ============================================================
 # 1. 信号
 # ============================================================
 
@@ -74,6 +80,8 @@ func _ready() -> void:
 		if meta_data:
 			_tile_data = meta_data
 	_validate_constants()
+	# 按地块位置计算并设置渲染排序 z_index
+	update_z_index()
 
 # ============================================================
 # 9. 公开方法 — 数据访问
@@ -179,6 +187,31 @@ func has_occupant_of_type(klass_name: String) -> bool:
 ## 获取地块上所有内容物。
 func get_all_occupants() -> Array[Node]:
 	return occupants.duplicate()
+
+# ============================================================
+# 9. 公开方法 — 渲染排序
+# ============================================================
+
+## 获取渲染层优先级。
+## 地块始终返回 [enum ZIndexConfig.RenderLayer.GROUND]。
+func get_render_layer() -> int:
+	return ZIndexConfig.RenderLayer.GROUND
+
+## 获取视觉高度（世界像素）。
+##
+## 使用 [method ZIndexConfig.get_sprite_visual_height] 从精灵纹理和缩放计算。
+## 子类可覆写以支持多格地块。
+func get_visual_height() -> float:
+	return ZIndexConfig.get_sprite_visual_height(self)
+
+## 获取排序锚点 y 值 = [member CanvasItem.global_position].y + [method get_visual_height]。
+func get_sorting_y() -> float:
+	return global_position.y + get_visual_height()
+
+## 根据当前排序锚点更新 [member CanvasItem.z_index]。
+## 地块不移动，通常在 [method _ready] 中调用一次即可。
+func update_z_index() -> void:
+	z_index = ZIndexConfig.calc_z_index(get_sorting_y(), get_render_layer())
 
 # ============================================================
 # 9. 公开方法 — 可选属性访问器

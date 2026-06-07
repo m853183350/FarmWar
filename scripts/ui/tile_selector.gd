@@ -1,11 +1,18 @@
-## 地块选择器。
+## 地块选择器（UI 系统）。
 ##
-## 挂载在 [code]world[/code] 节点下，处理地块的悬停指示、拖拽框选与模式切换。
+## 挂载在 [CanvasLayer] 子节点下，处理地块的悬停指示、拖拽框选与模式切换。
 ## 通过 [method _draw] 绘制悬停框和选择矩形，选中完成后弹出操作菜单。
 ##
+## 与旧版的关键区别：
+##   - 由 [CanvasLayer] 容器管理渲染层级，不再手动设置 z_index 与世界对象竞争
+##   - [member CanvasLayer.follow_viewport_enabled] 需设为 [code]true[/code]，
+##     确保绘制坐标系跟随摄像机，与地块坐标一致
+##
 ## 使用方式：
-##   1. 将本节点添加为 world 的子节点（z_index 应 > 0）
-##   2. 运行游戏，鼠标悬停查看指示框，左键拖拽框选地块
+##   1. 在场景中创建 [CanvasLayer] 节点，设置 [code]layer = 1[/code]、
+##      [code]follow_viewport_enabled = true[/code]
+##   2. 将本节点添加为该 CanvasLayer 的子节点
+##   3. 运行游戏，鼠标悬停查看指示框，左键拖拽框选地块
 class_name TileSelector extends Node2D
 
 # ============================================================
@@ -29,6 +36,12 @@ enum LeftClickMode {
 # 3. 常量
 # ============================================================
 
+const CONTEXT_MENU_SCENE: PackedScene = preload("res://scenes/ui/popup/tile_context_menu.tscn")
+
+# ============================================================
+# 4. @export 变量 — 样式
+# ============================================================
+
 @export var HOVER_COLOR: Color = Color(1.0, 0.85, 0.0, 0.9)       ## 悬停指示框颜色（金色）
 @export var HOVER_WIDTH: float = 2.0                                 ## 悬停框线宽
 @export var SELECTION_FILL: Color = Color(0.2, 0.6, 1.0, 0.25)     ## 选择矩形填充色
@@ -36,10 +49,8 @@ enum LeftClickMode {
 @export var SELECTION_WIDTH: float = 2.0                             ## 选择矩形线宽
 @export var MIN_DRAG_PX: float = 4.0                                 ## 最小拖拽距离（避免误触）
 
-const CONTEXT_MENU_SCENE: PackedScene = preload("res://scenes/ui/popup/tile_context_menu.tscn")
-
 # ============================================================
-# 4. @export 变量
+# 4. @export 变量 — 配置
 # ============================================================
 
 ## 当前左键操作模式。
@@ -78,9 +89,6 @@ var _active_menu: TileContextMenu = null
 func _ready() -> void:
 	# 启用 _input() 回调 — Godot 4 中 Node2D 默认不接收输入
 	set_process_input(true)
-	# 确保 z_index 高于地块（默认为 0）
-	if z_index <= 0:
-		z_index = 10
 
 func _process(_delta: float) -> void:
 	_update_hover()

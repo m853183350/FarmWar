@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(/d/Godot/Godot_v4.6.3-stable_win64_console.exe --headless --quit)",
+      "Bash(/d/Godot/Godot_v4.6.3-stable_win64_console.exe --headless --import --quit)"
     ]
   }
 }

@@ -4,7 +4,7 @@ var Taskdata = preload("res://scripts/units/task_data.gd")
 
 # Called when the node enters the scene tree for the first time.
 func _ready() -> void:
-	UnitManager.spawn_worker(Vector2i(5, 3))
+	UnitManager.spawn_worker(Vector2i(5, -3))
 	# TaskData.create("pole")
 	
 

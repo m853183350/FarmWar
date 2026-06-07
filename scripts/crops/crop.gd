@@ -16,6 +16,12 @@
 class_name Crop extends Sprite2D
 
 # ============================================================
+# 3. 常量
+# ============================================================
+
+const ZIndexConfig = preload("res://scripts/utils/z_index_config.gd")
+
+# ============================================================
 # 1. 信号
 # ============================================================
 
@@ -123,6 +129,8 @@ func plant(target_tile: Node2D) -> void:
 	# 注册为地块内容物
 	if target_tile.has_method("add_occupant"):
 		target_tile.add_occupant(self)
+	# 按地块位置计算并设置渲染排序 z_index
+	update_z_index()
 
 # ============================================================
 # 9. 公开方法 — 收获
@@ -179,6 +187,34 @@ func destroy() -> void:
 	queue_free()
 
 # ============================================================
+# 9. 公开方法 — 渲染排序
+# ============================================================
+
+## 获取渲染层优先级。
+##
+## 生长阶段 ≤ 1（种子/幼苗）时返回 [enum ZIndexConfig.RenderLayer.CROP_LOW]，
+## 之后返回 [enum ZIndexConfig.RenderLayer.CROP_TALL]。
+## 子类可覆写以自定义判定逻辑。
+func get_render_layer() -> int:
+	if growth_stage <= 1:
+		return ZIndexConfig.RenderLayer.CROP_LOW
+	return ZIndexConfig.RenderLayer.CROP_TALL
+
+## 获取视觉高度（世界像素）。
+##
+## 使用 [method ZIndexConfig.get_sprite_visual_height] 从精灵纹理和缩放计算。
+func get_visual_height() -> float:
+	return ZIndexConfig.get_sprite_visual_height(self)
+
+## 获取排序锚点 y 值 = [member CanvasItem.global_position].y + [method get_visual_height]。
+func get_sorting_y() -> float:
+	return global_position.y + get_visual_height()
+
+## 根据当前排序锚点和生长阶段更新 [member CanvasItem.z_index]。
+func update_z_index() -> void:
+	z_index = ZIndexConfig.calc_z_index(get_sorting_y(), get_render_layer())
+
+# ============================================================
 # 10. 私有方法 — Tick 驱动
 # ============================================================
 
@@ -210,6 +246,8 @@ func _advance_stage() -> void:
 	growth_stage = mini(growth_stage + 1, _stage_data.size() - 1)
 	_apply_stage_visuals()
 	stage_changed.emit(old_stage, growth_stage)
+	# 生长阶段变化可能导致渲染层从 CROP_LOW 变为 CROP_TALL
+	update_z_index()
 
 ## 根据当前阶段设置 region_rect（视觉帧）。
 func _apply_stage_visuals() -> void:

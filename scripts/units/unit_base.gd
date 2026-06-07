@@ -16,6 +16,12 @@ class_name UnitBase
 extends CharacterBody2D
 
 # ============================================================
+# 3. 常量
+# ============================================================
+
+const ZIndexConfig = preload("res://scripts/utils/z_index_config.gd")
+
+# ============================================================
 # 1. 信号
 # ============================================================
 
@@ -235,6 +241,35 @@ func heal(amount: float) -> void:
 	current_health = minf(max_health, current_health + amount)
 
 # ============================================================
+# 9. 公开方法 — 渲染排序
+# ============================================================
+
+## 获取渲染层优先级。
+## 单位始终返回 [enum ZIndexConfig.RenderLayer.UNIT]。
+## 子类可覆写以支持飞行单位等特殊排序。
+func get_render_layer() -> int:
+	return ZIndexConfig.RenderLayer.UNIT
+
+## 获取视觉高度（世界像素）。
+##
+## 单位不是 Sprite2D，使用 [member sprite] 子节点的纹理和缩放计算。
+## 若 sprite 无效，退回 [member TILE_SIZE]。
+func get_visual_height() -> float:
+	if sprite and is_instance_valid(sprite):
+		return ZIndexConfig.get_sprite_visual_height(sprite)
+	return float(TILE_SIZE)
+
+## 获取排序锚点 y 值 = [member Node2D.global_position].y + [method get_visual_height]。
+func get_sorting_y() -> float:
+	return global_position.y + get_visual_height()
+
+## 根据当前排序锚点更新 [member CanvasItem.z_index]。
+##
+## 在每次位置变化后调用（移动到达、直线移动、瞬移）。
+func update_z_index() -> void:
+	z_index = ZIndexConfig.calc_z_index(get_sorting_y(), get_render_layer()) + ZIndexConfig.LAYER_MULTIPLIER # 由于单位的逻辑位置在上一行，而显示需要到下一行之上，所以实际行数要+1
+
+# ============================================================
 # 10. 私有方法 — Tick 驱动
 # ============================================================
 
@@ -262,6 +297,7 @@ func _execute_move_phase(_delta: float) -> void:
 		_move_path.clear()
 		_set_state(UnitState.IDLE)
 		move_completed.emit()
+		update_z_index()
 		return
 
 	# 若在等待重新寻路
@@ -275,6 +311,7 @@ func _execute_move_phase(_delta: float) -> void:
 
 	# 直接直线移动（A* 未实现前的降级方案）
 	_direct_move(_delta)
+	update_z_index()
 
 ## 直线移动到目标（降级方案，A* 实现后替换）。
 func _direct_move(_delta: float) -> void:
@@ -302,6 +339,7 @@ func _direct_move(_delta: float) -> void:
 
 	# 同步全局位置
 	global_position = grid_position
+	update_z_index()
 
 ## 尝试寻路到目标位置（A* 框架，待实现）。
 func _try_find_path() -> void:
@@ -328,6 +366,7 @@ func _teleport_to_target() -> void:
 	_move_path.clear()
 	_set_state(UnitState.IDLE)
 	move_completed.emit()
+	update_z_index()
 
 ## 设置移动目标（世界坐标）并进入 MOVING 状态。
 func _set_move_target_world(world_pos: Vector2) -> void:
