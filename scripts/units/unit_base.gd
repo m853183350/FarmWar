@@ -125,6 +125,13 @@ var _path_wait_timer: float = 0.0
 ## 连续寻路失败次数。
 var _find_path_fail_count: int = 0
 
+## 单位使用的通行成本网格类型（"ground" / "flying" / "aquatic"）。
+## 子类可在 _load_config 中覆写。
+var cost_grid_type: String = "ground"
+
+## 等待中的异步寻路请求 ID。-1 表示无进行中的请求。
+var _pending_path_request_id: int = -1
+
 ## tick 信号连接状态。
 var _tick_connected: bool = false
 
@@ -153,6 +160,10 @@ func _ready() -> void:
 		TickSystem.tick_elapsed.connect(_on_tick)
 		_tick_connected = true
 
+	# 连接异步寻路结果
+	if PathfindingManager:
+		PathfindingManager.path_ready.connect(_on_path_ready)
+
 	# 子类加载配置
 	_load_config()
 
@@ -165,6 +176,8 @@ func _exit_tree() -> void:
 	if _tick_connected and TickSystem:
 		TickSystem.tick_elapsed.disconnect(_on_tick)
 		_tick_connected = false
+	if PathfindingManager and PathfindingManager.path_ready.is_connected(_on_path_ready):
+		PathfindingManager.path_ready.disconnect(_on_path_ready)
 
 func _process(_delta: float) -> void:
 	# 画面插值：在两帧 tick 位置之间平滑过渡
@@ -375,7 +388,7 @@ func _follow_path(_delta: float) -> void:
 		int(sub_target.x / TILE_SIZE),
 		int(sub_target.y / TILE_SIZE)
 	)
-	if not Pathfinding.is_tile_passable(sub_target_tile):
+	if not PathfindingManager.is_tile_passable(sub_target_tile, cost_grid_type):
 		# 路径被阻挡，清空并等待重新寻路
 		_move_path.clear()
 		_waiting_for_path = true
@@ -420,10 +433,10 @@ func _follow_path(_delta: float) -> void:
 	global_position = grid_position
 	update_z_index()
 
-## 尝试寻路到目标位置，调用 HPA* 寻路模块。
+## 尝试寻路到目标位置，通过 PathfindingManager 异步请求。
 func _try_find_path() -> void:
-	if debug_print_flag:
-		print("UnitBase: 尝试HPA*寻路, 当前状态: %d, 位置: %s, 目标: %s" % [state, grid_position, _target_position])
+	if _pending_path_request_id >= 0:
+		return  # 已有请求在进行中
 
 	var start_tile: Vector2i = get_current_tile()
 	var target_tile: Vector2i = Vector2i(
@@ -431,9 +444,17 @@ func _try_find_path() -> void:
 		int(_target_position.y / TILE_SIZE)
 	)
 
-	_move_path = Pathfinding.find_path(start_tile, target_tile)
+	_pending_path_request_id = PathfindingManager.request_path(
+		start_tile, target_tile, cost_grid_type
+	)
 
-	if _move_path.is_empty():
+## 异步寻路回调。
+func _on_path_ready(request_id: int, path: Array[Vector2]) -> void:
+	if request_id != _pending_path_request_id:
+		return
+	_pending_path_request_id = -1
+
+	if path.is_empty():
 		_find_path_fail_count += 1
 		if _find_path_fail_count >= FIND_PATH_FAIL_MAX:
 			_teleport_to_target()
@@ -441,6 +462,7 @@ func _try_find_path() -> void:
 			_waiting_for_path = true
 			_path_wait_timer = 0.0
 	else:
+		_move_path = path
 		_find_path_fail_count = 0
 		_path_index = 0
 		_waiting_for_path = false

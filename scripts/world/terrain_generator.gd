@@ -91,7 +91,6 @@ func _ready() -> void:
 	if EventBus:
 		EventBus.tile_action_triggered.connect(_on_tile_action_triggered)
 	generate()
-	Pathfinding._ensure_initialized()
 
 func _exit_tree() -> void:
 	if EventBus:
