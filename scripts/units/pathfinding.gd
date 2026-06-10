@@ -54,6 +54,7 @@ static var _dirty_clusters: Array[Vector2i] = []
 static var _initialized: bool = false
 
 static var debug_print_flag: bool = false
+static var debug_print_pathfinding_time: bool = true
 
 # ============================================================
 # 9. 公开静态方法 — 寻路入口
@@ -65,7 +66,8 @@ static var debug_print_flag: bool = false
 ## [param goal_tile] 终点地块坐标。
 ## 返回世界坐标路径点数组 [Array] of [Vector2]，空数组表示不可达。
 static func find_path(start_tile: Vector2i, goal_tile: Vector2i) -> Array[Vector2]:
-	var start_time: int = Time.get_ticks_usec()
+	var start_time: = 0
+	start_time = Time.get_ticks_usec()
 	_ensure_initialized()
 
 	if debug_print_flag:
@@ -86,9 +88,17 @@ static func find_path(start_tile: Vector2i, goal_tile: Vector2i) -> Array[Vector
 	if not _is_passable(goal_tile):
 		return []
 
+	if debug_print_pathfinding_time:
+		var end_time: int = Time.get_ticks_usec()
+		print("Pathfinding: 寻路起终点判断完成，耗时 %.2f ms" % [(end_time - start_time) / 1000.0])
+
 	# 同簇短路：起点和终点在同一簇内，直接底层 A*
 	var cs := _get_cluster(start_tile)
 	var cg := _get_cluster(goal_tile)
+
+	if debug_print_pathfinding_time:
+		var end_time: int = Time.get_ticks_usec()
+		print("Pathfinding: 寻路_get_cluster完成，耗时 %.2f ms" % [(end_time - start_time) / 1000.0])
 
 	if cs == cg:
 		var cluster_bounds := _cluster_bounds(cs)
@@ -97,6 +107,10 @@ static func find_path(start_tile: Vector2i, goal_tile: Vector2i) -> Array[Vector
 			return []
 		var smoothed: Array[Vector2i] = _smooth_path(tile_path)
 		return _tiles_to_world(smoothed)
+
+	if debug_print_pathfinding_time:
+		var end_time: int = Time.get_ticks_usec()
+		print("Pathfinding: 寻路同簇内直接A*完成，耗时 %.2f ms" % [(end_time - start_time) / 1000.0])
 
 	# 临时插入 start/goal 到抽象图
 	var temp_edges: Dictionary = {}  # Vector2i → Array[{to: Vector2i, cost: float, path: Array[Vector2i]}]
@@ -107,6 +121,10 @@ static func find_path(start_tile: Vector2i, goal_tile: Vector2i) -> Array[Vector
 		return []  # start 无法到达簇内任何 entrance
 
 	_insert_temp_node(goal_tile, cg, temp_edges, false)
+
+	if debug_print_pathfinding_time:
+		var end_time: int = Time.get_ticks_usec()
+		print("Pathfinding: 寻路_insert_temp_node完成，耗时 %.2f ms" % [(end_time - start_time) / 1000.0])
 
 	# 检查 goal 是否可被到达（至少一个 entrance 能到 goal）
 	var goal_reachable := false
@@ -120,19 +138,35 @@ static func find_path(start_tile: Vector2i, goal_tile: Vector2i) -> Array[Vector
 	if not goal_reachable:
 		return []
 
+	if debug_print_pathfinding_time:
+		var end_time: int = Time.get_ticks_usec()
+		print("Pathfinding: 寻路goal可达完成，耗时 %.2f ms" % [(end_time - start_time) / 1000.0])
+
+
 	# 抽象图 A*
 	var abstract_path: Array[Vector2i] = _abstract_astar(start_tile, goal_tile, temp_edges)
 	if abstract_path.is_empty():
 		return []
+
+	if debug_print_pathfinding_time:
+		var end_time: int = Time.get_ticks_usec()
+		print("Pathfinding: 寻路抽象图A*完成，耗时 %.2f ms" % [(end_time - start_time) / 1000.0])
+
 
 	# 细化抽象路径为逐格路径
 	var tile_path: Array[Vector2i] = _refine_path(abstract_path, temp_edges)
 	if tile_path.is_empty():
 		return []
 
+	if debug_print_pathfinding_time:
+		var end_time: int = Time.get_ticks_usec()
+		print("Pathfinding: 寻路抽象转逐格完成，耗时 %.2f ms" % [(end_time - start_time) / 1000.0])
+
+
 	var smoothed: Array[Vector2i] = _smooth_path(tile_path)
-	var end_time: int = Time.get_ticks_usec()
-	print("Pathfinding: 寻路完成，耗时 %.2f ms，路径长度: %d" % [(end_time - start_time) / 1000.0, smoothed.size()])
+	if debug_print_pathfinding_time:
+		var end_time: int = Time.get_ticks_usec()
+		print("Pathfinding: 完整寻路完成，耗时 %.2f ms，路径长度: %d" % [(end_time - start_time) / 1000.0, smoothed.size()])
 	return _tiles_to_world(smoothed)
 
 
