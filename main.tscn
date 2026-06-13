@@ -6,6 +6,7 @@
 [ext_resource type="Script" uid="uid://bqbpgsvwg8hse" path="res://scripts/ui/tile_selector.gd" id="2_1bvp3"]
 [ext_resource type="Script" uid="uid://cg1yl6tccvee5" path="res://scripts/player/player.gd" id="3_player"]
 [ext_resource type="Script" uid="uid://cg53h8t344vsl" path="res://scripts/units/debugger.gd" id="6_7mycd"]
+[ext_resource type="PackedScene" uid="uid://24r07tk425qq" path="res://scenes/ui/components/mode_selector.tscn" id="7_272bh"]
 
 [node name="Node2D" type="Node2D" unique_id=352653355]
 
@@ -40,3 +41,8 @@ script = ExtResource("3_player")
 
 [node name="调试工具" type="Node" parent="." unique_id=1612407275]
 script = ExtResource("6_7mycd")
+
+[node name="HUD" type="CanvasLayer" parent="." unique_id=357428440]
+layer = 1
+
+[node name="ModeSelector" parent="HUD" unique_id=1872852485 instance=ExtResource("7_272bh")]

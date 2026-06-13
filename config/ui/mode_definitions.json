@@ -1,0 +1,45 @@
+{
+  "default_modes": [
+    {
+      "id": "cursor",
+      "name": "光标",
+      "icon": "res://assets/sprites/ui/光标模式.png",
+      "tooltip": "选择对象和地块"
+    },
+    {
+      "id": "gather",
+      "name": "采集",
+      "icon": "res://assets/sprites/ui/采集.png",
+      "tooltip": "挖掘、砍树等采集操作"
+    }
+  ],
+  "slot_keys": [
+    "KEY_1",
+    "KEY_2",
+    "KEY_3",
+    "KEY_4",
+    "KEY_5",
+    "KEY_6",
+    "KEY_7",
+    "KEY_8",
+    "KEY_9",
+    "KEY_0",
+    "KEY_MINUS",
+    "KEY_EQUAL"
+  ],
+  "slot_size": 80,
+  "icon_size": 54,
+  "spacing": 0,
+  "hover_scale": 1.2,
+  "selected_scale": 1.35,
+  "scale_duration": 0.15,
+  "select_sound": "res://resources/sound/选中.ogg",
+  "font_size": 14,
+  "slot_background": "res://assets/sprites/UI/顶部选项框.png",
+  "plant_icons": [
+    {
+      "id": "Poaceae",
+      "icon": "res://assets/sprites/UI/禾本科.png"
+    }
+  ]
+}

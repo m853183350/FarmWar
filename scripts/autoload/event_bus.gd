@@ -65,3 +65,10 @@ signal worker_queue_empty(worker_id: StringName)
 ## 工人状态变化。
 ## 由 [FarmWorker] 发出。
 signal worker_state_changed(worker_id: StringName, old_state: int, new_state: int)
+
+# ---- UI 相关 ----
+
+## 模式选择器切换模式。
+## 由 [ModeSelector] 发出，[TileSelector] 等系统监听以调整行为。
+## [param mode_id] 新模式标识，如 "cursor"、"gather"、"wheat_tier1"。
+signal mode_changed(mode_id: StringName)

@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3 uid="uid://modeselctor01"]
+
+[ext_resource type="AudioStream" path="res://resources/sound/选中.ogg" id="1_sound"]
+[ext_resource type="Script" path="res://scripts/ui/mode_selector.gd" id="2_script"]
+
+[node name="ModeSelector" type="HFlowContainer"]
+script = ExtResource("2_script")
+slot_size = 120
+icon_size = 96
+spacing = 0
+hover_scale = 1.2
+selected_scale = 1.35
+scale_duration = 0.15
+key_label_font_size = 14
+
+[node name="AudioStreamPlayer" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("1_sound")

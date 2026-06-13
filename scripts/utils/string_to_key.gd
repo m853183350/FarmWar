@@ -50,6 +50,18 @@ static func _string_to_key(s: String) -> Key:
 		"7": return KEY_7
 		"8": return KEY_8
 		"9": return KEY_9
+
+		# 数字
+		"KEY_0": return KEY_0
+		"KEY_1": return KEY_1
+		"KEY_2": return KEY_2
+		"KEY_3": return KEY_3
+		"KEY_4": return KEY_4
+		"KEY_5": return KEY_5
+		"KEY_6": return KEY_6
+		"KEY_7": return KEY_7
+		"KEY_8": return KEY_8
+		"KEY_9": return KEY_9
 		
 		# 功能键
 		"ESCAPE": return KEY_ESCAPE
