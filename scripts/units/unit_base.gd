@@ -186,7 +186,7 @@ func _process(_delta: float) -> void:
 		# 计算插值因子：基于自上次 tick 以来的时间比例
 		# 简单方式：直接设置到 next 位置，视觉上也足够流畅（tick 间隔仅 50ms）
 		# 复杂方式（更平滑）：在 _process 中每帧做 lerp
-		global_position = global_position.lerp(_next_tick_position, 0.5)
+		global_position = global_position.lerp(_next_tick_position, 0.1)
 
 # ============================================================
 # 9. 公开方法 — 状态

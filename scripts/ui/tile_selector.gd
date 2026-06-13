@@ -49,6 +49,9 @@ const CONTEXT_MENU_SCENE: PackedScene = preload("res://scenes/ui/popup/tile_cont
 @export var SELECTION_WIDTH: float = 2.0                             ## 选择矩形线宽
 @export var MIN_DRAG_PX: float = 4.0                                 ## 最小拖拽距离（避免误触）
 
+## 当选中地块数超过此阈值时，改用网格线绘制而非逐地块绘制矩形。
+@export var GRIDLINE_DRAW_THRESHOLD: int = 20
+
 # ============================================================
 # 4. @export 变量 — 配置
 # ============================================================
@@ -76,6 +79,9 @@ var _drag_end: Vector2 = Vector2.ZERO
 ## 拖拽过程中实时预览的地块网格坐标。
 var _preview_tiles: Array[Vector2i] = []
 
+## 预览地块列表是否需要重新计算（帧率节流，每帧最多计算一次）。
+var _preview_dirty: bool = false
+
 ## 当前选中的地块网格坐标（菜单关闭前持续显示）。
 var _selected_tiles: Array[Vector2i] = []
 
@@ -92,6 +98,10 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	_update_hover()
+	if _preview_dirty:
+		_preview_dirty = false
+		_update_preview_tiles()
+		queue_redraw()
 
 func _input(event: InputEvent) -> void:
 	# 菜单打开时不处理世界点击（菜单自带遮罩层也会阻止穿透，此为双重保险）
@@ -107,12 +117,12 @@ func _input(event: InputEvent) -> void:
 				_on_mouse_released(event.position)
 	elif event is InputEventMouseMotion and _dragging:
 		_drag_end = get_global_mouse_position()
-		_update_preview_tiles()
+		_preview_dirty = true
 		queue_redraw()
 
 func _draw() -> void:
-	_draw_selected_tiles()
-	_draw_preview_tiles()
+	_draw_tile_block(_selected_tiles)
+	_draw_tile_block(_preview_tiles)
 	_draw_hover_indicator()
 	_draw_selection_rect()
 
@@ -128,6 +138,7 @@ func clear_selection() -> void:
 	_selected_tiles.clear()
 	_preview_tiles.clear()
 	_dragging = false
+	_preview_dirty = false
 	queue_redraw()
 
 # ============================================================
@@ -146,25 +157,71 @@ func _update_hover() -> void:
 		_hovered_grid = grid
 		queue_redraw()
 
-func _draw_selected_tiles() -> void:
-	if _selected_tiles.is_empty():
+## 高效绘制连续地块块：用包围矩形 + 网格线替代逐地块 draw_rect。
+## 减小 draw_rect 调用次数从 2×N 降至 2 + 行数 + 列数。
+## 对于 40×40 选中区域：约 82 次调用 vs 原来的 3200 次。
+func _draw_tile_block(tiles: Array[Vector2i]) -> void:
+	if tiles.is_empty():
 		return
-	for grid: Vector2i in _selected_tiles:
-		if grid.x < 0 or grid.y < 0:
-			continue
-		var rect := Rect2(Vector2(grid) * tile_size, Vector2.ONE * tile_size)
+
+	var count: int = tiles.size()
+	var ts: int = tile_size
+
+	# 小批量选中时沿用逐地块绘制，视觉上更精确
+	if count <= GRIDLINE_DRAW_THRESHOLD:
+		for grid: Vector2i in tiles:
+			if grid.x < 0 or grid.y < 0:
+				continue
+			var tile_rect := Rect2(Vector2(grid) * ts, Vector2.ONE * ts)
+			draw_rect(tile_rect, SELECTION_FILL)
+			draw_rect(tile_rect, SELECTION_OUTLINE, false, SELECTION_WIDTH)
+		return
+
+	# 计算网格坐标的包围盒
+	var min_x: int = 999999
+	var min_y: int = 999999
+	var max_x: int = -999999
+	var max_y: int = -999999
+
+	for grid: Vector2i in tiles:
+		if grid.x < min_x: min_x = grid.x
+		if grid.y < min_y: min_y = grid.y
+		if grid.x > max_x: max_x = grid.x
+		if grid.y > max_y: max_y = grid.y
+
+	var cols: int = max_x - min_x + 1
+	var rows: int = max_y - min_y + 1
+	var is_solid_rect: bool = (count == cols * rows)
+
+	if is_solid_rect:
+		# 优化路径：包围矩形 + 内部网格线
+		var rect := Rect2(Vector2(min_x, min_y) * ts, Vector2(cols, rows) * ts)
+
+		# 1 次填充 + 1 次外边框
 		draw_rect(rect, SELECTION_FILL)
 		draw_rect(rect, SELECTION_OUTLINE, false, SELECTION_WIDTH)
 
-func _draw_preview_tiles() -> void:
-	if _preview_tiles.is_empty():
-		return
-	for grid: Vector2i in _preview_tiles:
-		if grid.x < 0 or grid.y < 0:
-			continue
-		var rect := Rect2(Vector2(grid) * tile_size, Vector2.ONE * tile_size)
-		draw_rect(rect, SELECTION_FILL)
-		draw_rect(rect, SELECTION_OUTLINE, false, SELECTION_WIDTH)
+		# 内部网格线（线宽减半，视觉上更清爽）
+		var grid_line_width: float = SELECTION_WIDTH * 0.5
+		if cols > 1:
+			var y_bottom: float = rect.position.y + rect.size.y
+			for gx: int in range(min_x + 1, max_x + 1):
+				var x: float = float(gx * ts)
+				draw_line(Vector2(x, rect.position.y), Vector2(x, y_bottom), SELECTION_OUTLINE, grid_line_width)
+		if rows > 1:
+			var x_right: float = rect.position.x + rect.size.x
+			for gy: int in range(min_y + 1, max_y + 1):
+				var y: float = float(gy * ts)
+				draw_line(Vector2(rect.position.x, y), Vector2(x_right, y), SELECTION_OUTLINE, grid_line_width)
+	else:
+		# 非连续选中（稀疏块）仍然逐地块绘制
+		# 这种情况极少出现（仅当未来支持 Ctrl+点击多选等场景）
+		for grid: Vector2i in tiles:
+			if grid.x < 0 or grid.y < 0:
+				continue
+			var tile_rect := Rect2(Vector2(grid) * ts, Vector2.ONE * ts)
+			draw_rect(tile_rect, SELECTION_FILL)
+			draw_rect(tile_rect, SELECTION_OUTLINE, false, SELECTION_WIDTH)
 
 func _draw_hover_indicator() -> void:
 	if _hovered_grid.x < 0 or _hovered_grid.y < 0:
@@ -233,16 +290,25 @@ func _draw_selection_rect() -> void:
 	draw_rect(rect, SELECTION_OUTLINE, false, SELECTION_WIDTH)
 
 func _get_tiles_in_rect(rect: Rect2) -> Array[Vector2i]:
-	var tiles: Array[Vector2i] = []
 	var start_x: int = int(floorf(rect.position.x / tile_size))
 	var start_y: int = int(floorf(rect.position.y / tile_size))
 	var end_x: int = int(floorf((rect.position.x + rect.size.x) / tile_size))
 	var end_y: int = int(floorf((rect.position.y + rect.size.y) / tile_size))
 
+	# 预分配数组容量，避免多次扩容
+	var cols: int = end_x - start_x + 1
+	var rows: int = end_y - start_y + 1
+	var tiles: Array[Vector2i] = []
+	tiles.resize(cols * rows)
+
+	var idx: int = 0
 	for x: int in range(start_x, end_x + 1):
 		for y: int in range(start_y, end_y + 1):
 			if x >= 0 and y >= 0:
-				tiles.append(Vector2i(x, y))
+				tiles[idx] = Vector2i(x, y)
+				idx += 1
+
+	tiles.resize(idx)  # 收缩到实际有效元素数量
 	return tiles
 
 ## 根据当前拖拽矩形实时更新预览地块列表。
