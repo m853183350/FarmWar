@@ -4,6 +4,9 @@
 ## （[code]1[/code]~[code]=[/code]）或鼠标点击来选择当前操作模式。
 ##
 ## 默认包含"光标模式"和"采集"两种模式；每解锁一科作物，自动追加新模式方框。
+## 支持运行时动态增删方框（[method add_mode] / [method remove_mode]）、
+## 锁定/解锁（[method lock_mode] / [method unlock_mode]）、查询当前状态
+## （[method get_current_mode] / [method get_selected_index] / [method get_mode_count]）。
 ##
 ## 使用方式：
 ##   - 挂载在 [HFlowContainer] 场景上（[code]mode_selector.tscn[/code]）
@@ -26,7 +29,6 @@ const CONFIG_PATH: String = "res://config/ui/mode_definitions.json"
 const SELECT_SOUND: AudioStream = preload("res://resources/sound/选中.ogg")
 const StringToKey = preload("res://scripts/utils/string_to_key.gd")
 
-const debug_print_flag: bool = true
 # ============================================================
 # 4. @export 变量
 # ============================================================
@@ -168,6 +170,7 @@ func add_mode(id: StringName, mode_name: String, icon: Texture2D, tooltip: Strin
 	var mode_dict: Dictionary = {
 		"id": id,
 		"name": mode_name,
+		"icon_texture": icon,
 		"tooltip": tooltip,
 		"locked": locked,
 	}
@@ -190,7 +193,7 @@ func add_mode(id: StringName, mode_name: String, icon: Texture2D, tooltip: Strin
 ## 返回添加后的方框索引，如果超出最大槽位数或找不到配置则返回 -1。
 func add_mode_for_family(family_id: String) -> int:
 	if not _plant_icons.has(family_id):
-		push_warning("ModeSelector: 未找到作物科 '%s' 的图标配置" % family_id)
+		print("ModeSelector: 未找到作物科 '%s' 的图标配置" % family_id)
 		return -1
 	var info: Dictionary = _plant_icons[family_id] as Dictionary
 	var icon_path: String = info.get("icon", "")
@@ -205,6 +208,86 @@ func unlock_mode(id: StringName) -> void:
 			if i < _slots.size():
 				_set_slot_locked(_slots[i], false)
 			return
+
+## 锁定指定模式的方框（灰显且不可交互）。
+func lock_mode(id: StringName) -> void:
+	for i: int in range(_modes.size()):
+		if _modes[i].get("id", "") == id:
+			_modes[i]["locked"] = true
+			if i < _slots.size():
+				_set_slot_locked(_slots[i], true)
+			# 如果当前选中的恰是被锁定的模式，自动切回光标模式
+			if i == _selected_index:
+				_select_slot(0)
+			return
+
+## 移除一个模式。
+##
+## [param id] 模式标识。不能移除最后一个模式（至少保留一个）。
+##
+## 返回 [code]true[/code] 表示移除成功，[code]false[/code] 表示未找到或无法移除。
+func remove_mode(id: StringName) -> bool:
+	var index: int = -1
+	for i: int in range(_modes.size()):
+		if _modes[i].get("id", "") == id:
+			index = i
+			break
+
+	if index < 0:
+		push_warning("ModeSelector: 未找到模式 '%s'，无法移除" % id)
+		return false
+
+	if _modes.size() <= 1:
+		push_warning("ModeSelector: 至少保留一个模式，无法移除 '%s'" % id)
+		return false
+
+	# 清理 slot 节点
+	var slot: Control = _slots[index]
+	slot.queue_free()
+	_slots.remove_at(index)
+	_modes.remove_at(index)
+
+	# 重新索引后续 slot（名称、元数据、信号绑定）
+	for i: int in range(index, _slots.size()):
+		_reindex_slot(i)
+
+	# 记录移除前选中是否恰是待移除的模式
+	var was_selected: bool = (_selected_index == index)
+
+	# 如移除的恰是当前选中，切换到相邻可用模式
+	if _selected_index > index:
+		_selected_index -= 1
+	elif _selected_index == index:
+		_selected_index = clampi(_selected_index, 0, _slots.size() - 1)
+	else:
+		pass  # _selected_index < index，无需调整
+
+	# 更新新选中方框的视觉状态
+	_animate_slot_scale(_selected_index, _get_target_scale(_selected_index))
+
+	# 仅当移除的恰是当前选中模式时发出信号（索引偏移不算模式变更）
+	if was_selected:
+		var new_mode_id: StringName = get_current_mode()
+		mode_selected.emit(new_mode_id)
+		if EventBus:
+			EventBus.mode_changed.emit(new_mode_id)
+
+	return true
+
+## 获取当前选中模式的索引。
+func get_selected_index() -> int:
+	return _selected_index
+
+## 获取当前模式总数。
+func get_mode_count() -> int:
+	return _modes.size()
+
+## 检查指定模式是否存在。
+func has_mode(id: StringName) -> bool:
+	for mode: Dictionary in _modes:
+		if mode.get("id", "") == id:
+			return true
+	return false
 
 # ============================================================
 # 10. 私有方法 — 初始化
@@ -402,8 +485,13 @@ func _create_icon(mode: Dictionary) -> TextureRect:
 	var icon: TextureRect = TextureRect.new()
 	icon.name = "Icon"
 
-	# 加载纹理
-	var texture: Texture2D = _load_icon_texture(mode.get("icon_path", ""))
+	# 加载纹理：优先使用预加载好的纹理（来自 add_mode 参数），其次尝试文件路径
+	var texture: Texture2D = null
+	if mode.has("icon_texture") and mode["icon_texture"] is Texture2D:
+		print("ModeSelector: 使用预加载图标纹理 for mode '%s'" % mode.get("id", ""))
+		texture = mode["icon_texture"] as Texture2D
+	else:
+		texture = _load_icon_texture(mode.get("icon_path", ""))
 	icon.texture = texture
 	icon.expand_mode = TextureRect.EXPAND_KEEP_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -467,9 +555,11 @@ func _load_icon_texture(path: String) -> Texture2D:
 	if not path.is_empty() and ResourceLoader.exists(path):
 		var res: Resource = load(path)
 		if res is Texture2D:
+			print("ModeSelector: 成功加载图标纹理: %s" % path)
 			return res as Texture2D
 
 	# 生成占位符纹理
+	print("ModeSelector: 无法加载图标纹理 '%s'，使用占位符" % path)
 	return _create_placeholder_texture()
 
 ## 生成一个纯色占位纹理（棋盘格风格，便于识别缺失资源）。
@@ -614,6 +704,29 @@ func _set_slot_locked(slot: Control, locked: bool) -> void:
 			icon.modulate.a = 1.0
 		if key_label:
 			key_label.modulate.a = 1.0
+
+## 重新设置指定索引方框的名称、元数据与信号绑定。
+## 在 [method remove_mode] 移除方框后调用，确保后续方框索引正确。
+func _reindex_slot(index: int) -> void:
+	if index < 0 or index >= _slots.size():
+		return
+
+	var slot: Control = _slots[index]
+	slot.name = "Slot_top%d" % index
+	slot.set_meta("index", index)
+	slot.set_meta("mode_id", _modes[index].get("id", ""))
+
+	# 断开旧信号再重新以新 index 绑定
+	if slot.gui_input.is_connected(_on_slot_gui_input):
+		slot.gui_input.disconnect(_on_slot_gui_input)
+	if slot.mouse_entered.is_connected(_on_slot_mouse_entered):
+		slot.mouse_entered.disconnect(_on_slot_mouse_entered)
+	if slot.mouse_exited.is_connected(_on_slot_mouse_exited):
+		slot.mouse_exited.disconnect(_on_slot_mouse_exited)
+
+	slot.gui_input.connect(_on_slot_gui_input.bind(index))
+	slot.mouse_entered.connect(_on_slot_mouse_entered.bind(index))
+	slot.mouse_exited.connect(_on_slot_mouse_exited.bind(index))
 
 # ============================================================
 # 10. 私有方法 — 音效

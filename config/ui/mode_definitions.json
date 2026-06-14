@@ -24,8 +24,8 @@
     "KEY_8",
     "KEY_9",
     "KEY_0",
-    "KEY_MINUS",
-    "KEY_EQUAL"
+    "MINUS",
+    "EQUAL"
   ],
   "slot_size": 80,
   "icon_size": 54,

@@ -5,7 +5,7 @@
 [ext_resource type="Script" uid="uid://dywptnwgxovja" path="res://scripts/ui/tick_counter_label.gd" id="2_0xm2m"]
 [ext_resource type="Script" uid="uid://bqbpgsvwg8hse" path="res://scripts/ui/tile_selector.gd" id="2_1bvp3"]
 [ext_resource type="Script" uid="uid://cg1yl6tccvee5" path="res://scripts/player/player.gd" id="3_player"]
-[ext_resource type="Script" uid="uid://cg53h8t344vsl" path="res://scripts/units/debugger.gd" id="6_7mycd"]
+[ext_resource type="Script" uid="uid://cg53h8t344vsl" path="res://scripts/utils/debugger.gd" id="6_7mycd"]
 [ext_resource type="PackedScene" uid="uid://24r07tk425qq" path="res://scenes/ui/components/mode_selector.tscn" id="7_272bh"]
 
 [node name="Node2D" type="Node2D" unique_id=352653355]
@@ -39,11 +39,12 @@ SELECTION_FILL = Color(0.2, 0.6, 1, 0.57254905)
 [node name="Player" type="Node" parent="." unique_id=651441772]
 script = ExtResource("3_player")
 
-[node name="调试工具" type="Node" parent="." unique_id=1612407275]
-script = ExtResource("6_7mycd")
-
 [node name="HUD" type="CanvasLayer" parent="." unique_id=357428440]
 layer = 100000
 
 [node name="ModeSelector" parent="HUD" unique_id=1872852485 instance=ExtResource("7_272bh")]
 mouse_force_pass_scroll_events = false
+
+[node name="调试工具" type="Node" parent="." unique_id=1612407275 node_paths=PackedStringArray("ModeSelector")]
+script = ExtResource("6_7mycd")
+ModeSelector = NodePath("../HUD/ModeSelector")
