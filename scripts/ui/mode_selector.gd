@@ -354,7 +354,6 @@ func _create_slot(mode: Dictionary, index: int) -> Control:
 	# 1. 背景贴图（底层）
 	var bg: TextureRect = _create_background()
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	print("bg mouse_filter =", bg.mouse_filter)
 	slot.add_child(bg)
 	slot.set_meta("bg_rect", bg)
 
@@ -493,11 +492,11 @@ func _create_placeholder_texture() -> Texture2D:
 # ============================================================
 
 ## 处理 ModeSelector 自身区域的鼠标输入（slot 之间的空白间隙）。
-## 接受所有鼠标按键事件，防止点击穿透到游戏世界。
+## 接受所有鼠标按键事件，防止点击穿透到游戏世界。（暂时不需要，非slot内的空白部分应当可以穿透）
 func _on_self_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		# print("ModeSelector: 收到自身 GUI 输入事件，拦截: %s" % event)
-		accept_event()
+		# accept_event()
 		pass
 
 ## 处理方框上的鼠标输入。
@@ -506,7 +505,7 @@ func _on_slot_gui_input(event: InputEvent, index: int) -> void:
 	if not event is InputEventMouseButton:
 		return
 	var mb: InputEventMouseButton = event as InputEventMouseButton
-	# print("ModeSelector: 方框 %d 收到鼠标事件: button=%d, pressed=%s" % [index, mb.button_index, mb.pressed])
+	print("ModeSelector: 方框 %d 收到鼠标事件: button=%d, pressed=%s" % [index, mb.button_index, mb.pressed])
 	if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
 		_select_slot(index)
 		accept_event()

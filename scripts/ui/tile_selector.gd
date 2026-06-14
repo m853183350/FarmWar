@@ -93,8 +93,9 @@ var _active_menu: TileContextMenu = null
 # ============================================================
 
 func _ready() -> void:
-	# 启用 _input() 回调 — Godot 4 中 Node2D 默认不接收输入
-	set_process_input(true)
+	# 启用 _unhandled_input() 回调 — 仅处理 GUI 未消费的事件（点击 UI 时不触发）。
+	# 这确保左键点击先经过 GUI 系统（Control 节点），未消费的才用于地块选择。
+	set_process_unhandled_input(true)
 
 func _process(_delta: float) -> void:
 	_update_hover()
@@ -103,14 +104,13 @@ func _process(_delta: float) -> void:
 		_update_preview_tiles()
 		queue_redraw()
 
-func _input(event: InputEvent) -> void:
+func _unhandled_input(event: InputEvent) -> void:
 	# 菜单打开时不处理世界点击（菜单自带遮罩层也会阻止穿透，此为双重保险）
 	if _active_menu != null:
 		return
 
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
-			get_viewport().set_input_as_handled()
 			if event.pressed:
 				_on_mouse_pressed(event.position)
 			else:

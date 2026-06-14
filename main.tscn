@@ -43,7 +43,7 @@ script = ExtResource("3_player")
 script = ExtResource("6_7mycd")
 
 [node name="HUD" type="CanvasLayer" parent="." unique_id=357428440]
-layer = 1000000
+layer = 100000
 
 [node name="ModeSelector" parent="HUD" unique_id=1872852485 instance=ExtResource("7_272bh")]
 mouse_force_pass_scroll_events = false

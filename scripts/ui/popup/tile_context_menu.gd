@@ -62,7 +62,7 @@ var _title_label: Label = null
 # ============================================================
 
 func _ready() -> void:
-	layer = 4
+	layer = 100001
 	visible = false
 	_build_ui()
 
