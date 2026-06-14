@@ -117,6 +117,7 @@ func _input(event: InputEvent) -> void:
 		if key_event.pressed:
 			_select_by_key(key_event.keycode, key_event)
 
+
 # ============================================================
 # 9. 公开方法
 # ============================================================
@@ -346,21 +347,26 @@ func _populate_slots() -> void:
 ##   3. 键位标签 [Label] — 右下角，纯文本无独立背景
 func _create_slot(mode: Dictionary, index: int) -> Control:
 	var slot: Control = Control.new()
+	slot.name = "Slot_top%d" % index
 	slot.custom_minimum_size = Vector2(float(slot_size), float(slot_size))
 	slot.mouse_filter = Control.MOUSE_FILTER_STOP
 
 	# 1. 背景贴图（底层）
 	var bg: TextureRect = _create_background()
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	print("bg mouse_filter =", bg.mouse_filter)
 	slot.add_child(bg)
 	slot.set_meta("bg_rect", bg)
 
 	# 2. 图标（中层）
 	var icon: TextureRect = _create_icon(mode)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot.add_child(icon)
 	slot.set_meta("icon_rect", icon)
 
 	# 3. 键位标签（顶层）
 	var key_label: Label = _create_key_label(index)
+	key_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot.add_child(key_label)
 	slot.set_meta("key_label", key_label)
 
@@ -490,13 +496,17 @@ func _create_placeholder_texture() -> Texture2D:
 ## 接受所有鼠标按键事件，防止点击穿透到游戏世界。
 func _on_self_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
+		# print("ModeSelector: 收到自身 GUI 输入事件，拦截: %s" % event)
 		accept_event()
+		pass
 
 ## 处理方框上的鼠标输入。
 func _on_slot_gui_input(event: InputEvent, index: int) -> void:
+	# print("ModeSelector: 方框 %d 收到 GUI 输入事件: %s" % [index, event])
 	if not event is InputEventMouseButton:
 		return
 	var mb: InputEventMouseButton = event as InputEventMouseButton
+	# print("ModeSelector: 方框 %d 收到鼠标事件: button=%d, pressed=%s" % [index, mb.button_index, mb.pressed])
 	if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed:
 		_select_slot(index)
 		accept_event()
