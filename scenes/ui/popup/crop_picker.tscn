@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://2q4ygcwfrrrk"]
+
+[ext_resource type="Script" path="res://scripts/ui/popup/crop_picker.gd" id="1_script"]
+
+[node name="CropPicker" type="CanvasLayer"]
+script = ExtResource("1_script")

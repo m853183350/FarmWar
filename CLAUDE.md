@@ -13,6 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Physics: Jolt Physics
 - Viewport: 1920×1080
 - No addons, no export presets yet
+- 开发环境：vscode terminal in Windows 11
 
 ## Common Commands
 

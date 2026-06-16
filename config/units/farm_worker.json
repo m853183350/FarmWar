@@ -11,6 +11,7 @@
   "harvest_ticks": 10,
   "plow_ticks": 10,
   "dig_ticks": 10,
+  "gather_ticks": 10,
   "move_ticks": 0,
   "animations": {
     "idle": "idle",

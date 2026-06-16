@@ -66,6 +66,44 @@ signal worker_queue_empty(worker_id: StringName)
 ## 由 [FarmWorker] 发出。
 signal worker_state_changed(worker_id: StringName, old_state: int, new_state: int)
 
+# ---- 地块分配 ----
+
+## 地块被分配给某种作物进行自动耕作。
+## 由 [FarmlandManager.assign_tiles] 发出。
+## [param tiles] 分配的网格坐标数组（[Array] of [Vector2i]）。
+## [param crop_id] 作物标识（如 "wheat_tier1"）。
+signal farmland_assigned(tiles: Array, crop_id: String)
+
+## 地块的自动耕作分配被移除。
+## 由 [FarmlandManager.unassign_tiles] 发出。
+## [param tiles] 取消分配的网格坐标数组（[Array] of [Vector2i]）。
+signal farmland_unassigned(tiles: Array)
+
+## 采集动作被触发（用于 UI 反馈/音效等）。
+## [param action] 采集动作类型（如 "dig", "chop", "fish"）。
+## [param tiles] 目标地块数组（[Array] of [Vector2i]）。
+signal gather_action_triggered(action: StringName, tiles: Array)
+
+# ---- 作物生长 ----
+
+## 作物生长阶段转变。
+## 由 [Crop._advance_stage] 在每次阶段推进时发出。
+## [param crop_node] 发出信号的作物节点引用。
+## [param grid_pos] 作物所在地块的网格坐标。
+## [param crop_id] 作物标识（如 "wheat_tier1"）。
+## [param old_stage] 转变前的阶段索引。
+## [param new_stage] 转变后的阶段索引。
+## [param is_mature] 是否已达到成熟阶段。
+signal crop_stage_changed(crop_node: Node2D, grid_pos: Vector2i, crop_id: String, old_stage: int, new_stage: int, is_mature: bool)
+
+## 作物达到成熟阶段（可收获）。
+## 由 [Crop._advance_stage] 在进入最终阶段时发出。
+## 供 [FarmlandManager] 监听以自动创建 HARVEST 任务。
+## [param crop_node] 成熟的作物节点引用。
+## [param grid_pos] 作物所在地块的网格坐标。
+## [param crop_id] 成熟的作物标识。
+signal crop_matured(crop_node: Node2D, grid_pos: Vector2i, crop_id: String)
+
 # ---- UI 相关 ----
 
 ## 模式选择器切换模式。

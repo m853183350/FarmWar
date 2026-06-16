@@ -1,14 +1,45 @@
 {
 	"dirt": {
 		"scene": "res://scenes/world/dirt_1.tscn",
-		"weight": 0.60
+		"weight": 0.60,
+		"gather_actions": [
+			{
+				"id": "chop_tree",
+				"name": "砍伐树木",
+				"gather_action": "chop",
+				"task_type": "GATHER",
+				"conditions": [
+					{ "type": "has_occupant", "value": "Tree" }
+				]
+			}
+		]
 	},
 	"stone": {
 		"scene": "res://scenes/world/stone_1.tscn",
-		"weight": 0.25
+		"weight": 0.25,
+		"gather_actions": [
+			{
+				"id": "dig_stone",
+				"name": "挖掘石材",
+				"gather_action": "dig",
+				"task_type": "DIG",
+				"conditions": []
+			}
+		]
 	},
 	"ocean": {
 		"scene": "res://scenes/world/ocean_1.tscn",
-		"weight": 0.15
+		"weight": 0.15,
+		"gather_actions": [
+			{
+				"id": "fish_ocean",
+				"name": "钓鱼",
+				"gather_action": "fish",
+				"task_type": "GATHER",
+				"conditions": [
+					{ "type": "property", "key": "fishable", "value": true }
+				]
+			}
+		]
 	}
 }

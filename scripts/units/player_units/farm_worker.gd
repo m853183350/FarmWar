@@ -62,6 +62,9 @@ var plow_ticks: int = 40
 ## 挖掘操作基础 tick 数。
 var dig_ticks: int = 30
 
+## 通用采集操作基础 tick 数。
+var gather_ticks: int = 30
+
 ## 工作可达距离（曼哈顿距离阈值，像素）。
 ## 工人与地块中心的世界坐标曼哈顿距离小于此值时视为已达工作条件。
 ## 默认值为 1 个地块宽度（64px），可运行时修改以调整工作触发范围。
@@ -115,6 +118,7 @@ func _load_config() -> void:
 	harvest_ticks = _config_cache.get("harvest_ticks", 30)
 	plow_ticks = _config_cache.get("plow_ticks", 40)
 	dig_ticks = _config_cache.get("dig_ticks", 30)
+	gather_ticks = _config_cache.get("gather_ticks", 30)
 
 # ============================================================
 # 9. 公开方法 — 任务队列操作
@@ -257,6 +261,8 @@ func _start_task(task: TaskData) -> void:
 			_start_tile_task(task, harvest_ticks, _validate_harvest)
 		TaskData.TaskType.DIG:
 			_start_tile_task(task, dig_ticks, _validate_dig)
+		TaskData.TaskType.GATHER:
+			_start_tile_task(task, gather_ticks, _validate_gather)
 		TaskData.TaskType.WAIT:
 			_start_wait_task(task)
 		_:
@@ -272,7 +278,7 @@ func _start_move_task(task: TaskData) -> void:
 	animation_controller.play("walk")
 	_start_footstep_sfx()
 
-## 地块操作任务（PLOW/PLANT/HARVEST/DIG）：验证 → 开始移动阶段。
+## 地块操作任务（PLOW/PLANT/HARVEST/DIG/GATHER）：验证 → 开始移动阶段。
 func _start_tile_task(task: TaskData, base_ticks: int, validator: Callable) -> void:
 	var reason: String = validator.call(task)
 	if not reason.is_empty():
@@ -308,7 +314,7 @@ func _continue_task(task: TaskData, _delta: float) -> void:
 	match task.task_type:
 		TaskData.TaskType.MOVE:
 			_continue_move_task(task)
-		TaskData.TaskType.PLOW, TaskData.TaskType.PLANT, TaskData.TaskType.HARVEST, TaskData.TaskType.DIG:
+		TaskData.TaskType.PLOW, TaskData.TaskType.PLANT, TaskData.TaskType.HARVEST, TaskData.TaskType.DIG, TaskData.TaskType.GATHER:
 			_continue_tile_task(task)
 		TaskData.TaskType.WAIT:
 			_continue_wait_task(task)
@@ -421,8 +427,23 @@ func _execute_task_action(task: TaskData) -> void:
 			TileActions.harvest_crop(tiles, world)
 		TaskData.TaskType.DIG:
 			TileActions.dig_tiles(tiles, world)
+		TaskData.TaskType.GATHER:
+			_execute_gather_action(task, world)
 		_:
 			pass
+
+## 执行采集任务的实际操作。
+## 根据 params.gather_action 分发到对应的 TileActions 方法。
+func _execute_gather_action(task: TaskData, world: Node2D) -> void:
+	var tiles: Array[Vector2i] = [task.target_tile]
+	var action: String = task.params.get("gather_action", "")
+	match action:
+		"dig":
+			TileActions.dig_tiles(tiles, world)
+		_:
+			# chop, fish 等操作暂时通过 EventBus 通知（后续可接入更具体的处理逻辑）
+			if EventBus:
+				EventBus.gather_action_triggered.emit(action, tiles)
 
 # ============================================================
 # 10. 私有方法 — 验证
@@ -497,6 +518,17 @@ func _validate_dig(task: TaskData) -> String:
 		return "该地块不可挖掘"
 	return ""
 
+## 验证地块是否可执行采集操作。返回空字符串表示通过。
+## 采集任务由 GatherActions 预筛选，本验证仅做基本检查（地块存在且可通行）。
+func _validate_gather(task: TaskData) -> String:
+	var world: Node2D = _get_world()
+	if world == null:
+		return "无法获取世界节点"
+	var tile: Node2D = _find_tile(world, task.target_tile)
+	if tile == null:
+		return "地块不存在"
+	return ""
+
 # ============================================================
 # 10. 私有方法 — 父任务
 # ============================================================
@@ -525,7 +557,7 @@ func _on_move_completed() -> void:
 		var current: TaskData = _tasks[0]
 		if current.status == TaskData.TaskStatus.IN_PROGRESS:
 			match current.task_type:
-				TaskData.TaskType.PLOW, TaskData.TaskType.PLANT, TaskData.TaskType.HARVEST, TaskData.TaskType.DIG:
+				TaskData.TaskType.PLOW, TaskData.TaskType.PLANT, TaskData.TaskType.HARVEST, TaskData.TaskType.DIG, TaskData.TaskType.GATHER:
 					if is_adjacent_to(current.target_tile):
 						_begin_work_phase(current)
 
@@ -608,6 +640,8 @@ func _get_work_animation(task_type: int) -> StringName:
 			return anims.get("harvest", "harvest")
 		TaskData.TaskType.DIG:
 			return anims.get("plow", "plow")  # 挖掘复用翻耕动画
+		TaskData.TaskType.GATHER:
+			return anims.get("plow", "plow")  # 采集复用翻耕动画
 		_:
 			return "idle"
 
@@ -622,6 +656,8 @@ func _get_work_sound(task_type: int) -> String:
 		TaskData.TaskType.HARVEST:
 			return sounds.get("harvest", "")
 		TaskData.TaskType.DIG:
+			return sounds.get("plow", "")
+		TaskData.TaskType.GATHER:
 			return sounds.get("plow", "")
 		_:
 			return ""

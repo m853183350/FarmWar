@@ -249,6 +249,15 @@ func _advance_stage() -> void:
 	# 生长阶段变化可能导致渲染层从 CROP_LOW 变为 CROP_TALL
 	update_z_index()
 
+	# 通过 EventBus 广播阶段变化，供 FarmlandManager 等系统监听
+	var grid_pos: Vector2i = _get_grid_position()
+	var crop_id: String = _crop_info.get("crop_id", "")
+	var mature: bool = _is_mature()
+	if EventBus:
+		EventBus.crop_stage_changed.emit(self, grid_pos, crop_id, old_stage, growth_stage, mature)
+		if mature:
+			EventBus.crop_matured.emit(self, grid_pos, crop_id)
+
 ## 根据当前阶段设置 region_rect（视觉帧）。
 func _apply_stage_visuals() -> void:
 	var stage_info: Dictionary = _stage_data[growth_stage]
@@ -259,6 +268,19 @@ func _apply_stage_visuals() -> void:
 ## 当前阶段是否为最终阶段（成熟）。
 func _is_mature() -> bool:
 	return growth_stage >= _stage_data.size() - 1
+
+## 获取作物所在地块的网格坐标。
+## 从地块节点的名称（tile_X_Y）解析出网格坐标。
+## 若地块引用为空或名称不匹配，返回 (-1, -1)。
+func _get_grid_position() -> Vector2i:
+	if tile == null:
+		return Vector2i(-1, -1)
+	var tile_name: String = tile.name
+	if tile_name.begins_with("tile_"):
+		var parts: PackedStringArray = tile_name.split("_")
+		if parts.size() >= 3:
+			return Vector2i(int(parts[1]), int(parts[2]))
+	return Vector2i(-1, -1)
 
 # ============================================================
 # 10. 私有方法 — 收获计算

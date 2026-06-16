@@ -19,6 +19,7 @@ enum TaskType {
 	PLANT,       ## 种植作物（需在 [member params] 中指定 crop_id）
 	HARVEST,     ## 收获已成熟的作物
 	DIG,         ## 挖掘地块（STONE → DIRT）
+	GATHER,      ## 通用采集（砍树、钓鱼等非种植类操作）
 	WAIT,        ## 原地等待 N tick（用于时序控制，预留）
 }
 
@@ -130,6 +131,8 @@ func get_type_name() -> String:
 			return "收获"
 		TaskType.DIG:
 			return "挖掘"
+		TaskType.GATHER:
+			return "采集"
 		TaskType.WAIT:
 			return "等待"
 		_:

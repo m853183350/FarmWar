@@ -1,12 +1,16 @@
 ## 地块选择器（UI 系统）。
 ##
 ## 挂载在 [CanvasLayer] 子节点下，处理地块的悬停指示、拖拽框选与模式切换。
-## 通过 [method _draw] 绘制悬停框和选择矩形，选中完成后弹出操作菜单。
+## 通过 [method _draw] 绘制悬停框和选择矩形，选中完成后按当前模式分发：
+##   - SELECT：弹出上下文菜单
+##   - GATHER：委托 GatherActions 判定采集动作，派遣工人执行
+##   - PLANT_FAMILY：弹出 CropPicker 选择作物，交给 FarmlandManager
 ##
 ## 与旧版的关键区别：
 ##   - 由 [CanvasLayer] 容器管理渲染层级，不再手动设置 z_index 与世界对象竞争
 ##   - [member CanvasLayer.follow_viewport_enabled] 需设为 [code]true[/code]，
 ##     确保绘制坐标系跟随摄像机，与地块坐标一致
+##   - 支持右键取消拖拽
 ##
 ## 使用方式：
 ##   1. 在场景中创建 [CanvasLayer] 节点，设置 [code]layer = 1[/code]、
@@ -28,8 +32,9 @@ signal selection_completed(tiles: Array)
 
 ## 左键操作模式。
 enum LeftClickMode {
-	SELECT,      ## 选择 — 拖拽框选地块
-	# 预留：PLOW, PLANT, BUILD 等
+	SELECT,        ## 光标模式 — 拖拽框选 → 弹出菜单（现有行为）
+	GATHER,        ## 采集模式 — 拖拽框选 → 直接发送采集派遣
+	PLANT_FAMILY,  ## 种植模式 — 拖拽框选 → 弹出作物选择器
 }
 
 # ============================================================
@@ -37,6 +42,7 @@ enum LeftClickMode {
 # ============================================================
 
 const CONTEXT_MENU_SCENE: PackedScene = preload("res://scenes/ui/popup/tile_context_menu.tscn")
+const CROP_PICKER_SCENE: PackedScene = preload("res://scenes/ui/popup/crop_picker.tscn")
 
 # ============================================================
 # 4. @export 变量 — 样式
@@ -88,6 +94,12 @@ var _selected_tiles: Array[Vector2i] = []
 ## 当前活跃的上下文菜单实例。
 var _active_menu: TileContextMenu = null
 
+## 当前活跃的作物选择器实例。
+var _active_picker: CanvasLayer = null
+
+## 当前植物科模式对应的 family_id（仅在 PLANT_FAMILY 模式下有效）。
+var _current_family_id: String = ""
+
 # ============================================================
 # 8. 生命周期方法
 # ============================================================
@@ -96,6 +108,9 @@ func _ready() -> void:
 	# 启用 _unhandled_input() 回调 — 仅处理 GUI 未消费的事件（点击 UI 时不触发）。
 	# 这确保左键点击先经过 GUI 系统（Control 节点），未消费的才用于地块选择。
 	set_process_unhandled_input(true)
+	# 监听模式切换
+	if EventBus:
+		EventBus.mode_changed.connect(_on_mode_changed)
 
 func _process(_delta: float) -> void:
 	_update_hover()
@@ -110,6 +125,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventMouseButton:
+		# 右键取消拖拽
+		if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+			if _dragging:
+				_cancel_drag()
+				return
+
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
 				_on_mouse_pressed(event.position)
@@ -135,11 +156,32 @@ func clear_selection() -> void:
 	if _active_menu:
 		_active_menu.queue_free()
 		_active_menu = null
+	if _active_picker:
+		_active_picker.queue_free()
+		_active_picker = null
 	_selected_tiles.clear()
 	_preview_tiles.clear()
 	_dragging = false
 	_preview_dirty = false
 	queue_redraw()
+
+# ============================================================
+# 10. 私有方法 — 模式切换
+# ============================================================
+
+## 响应 ModeSelector 发出的模式切换信号。
+func _on_mode_changed(mode_id: StringName) -> void:
+	match mode_id:
+		&"cursor":
+			mode = LeftClickMode.SELECT
+			_current_family_id = ""
+		&"gather":
+			mode = LeftClickMode.GATHER
+			_current_family_id = ""
+		_:
+			# 其他 ID 一律视为植物科模式
+			mode = LeftClickMode.PLANT_FAMILY
+			_current_family_id = mode_id  # 如 "poaceae"
 
 # ============================================================
 # 10. 私有方法 — 悬停
@@ -240,36 +282,50 @@ func _draw_hover_indicator() -> void:
 # ============================================================
 
 func _on_mouse_pressed(_screen_pos: Vector2) -> void:
-	match mode:
-		LeftClickMode.SELECT:
-			_dragging = true
-			_drag_start = get_global_mouse_position()
-			_drag_end = _drag_start
-			# 按下时立即显示单个悬停地块的预览
-			if _hovered_grid.x >= 0 and _hovered_grid.y >= 0:
-				_preview_tiles = [_hovered_grid]
-			else:
-				_preview_tiles.clear()
-			queue_redraw()
+	# 所有模式下左键按下都开始拖拽
+	_dragging = true
+	_drag_start = get_global_mouse_position()
+	_drag_end = _drag_start
+	# 按下时立即显示单个悬停地块的预览
+	if _hovered_grid.x >= 0 and _hovered_grid.y >= 0:
+		_preview_tiles = [_hovered_grid]
+	else:
+		_preview_tiles.clear()
+	queue_redraw()
 
 func _on_mouse_released(_screen_pos: Vector2) -> void:
+	if not _dragging:
+		return
+	_dragging = false
+
+	var selected: Array[Vector2i]
+	if require_min_drag and _get_drag_distance() <= MIN_DRAG_PX:
+		# 轻点：选择单个悬停地块
+		if _hovered_grid.x >= 0 and _hovered_grid.y >= 0:
+			selected = [_hovered_grid]
+	else:
+		# 拖拽：使用实时预览的地块列表
+		selected = _preview_tiles.duplicate()
+
+	_preview_tiles.clear()
+	queue_redraw()
+
+	if selected.is_empty():
+		return
+
 	match mode:
 		LeftClickMode.SELECT:
-			if not _dragging:
-				return
-			_dragging = false
+			_finalize_selection(selected)       # 现有：弹出菜单
+		LeftClickMode.GATHER:
+			_handle_gather(selected)            # 新增：采集派遣
+		LeftClickMode.PLANT_FAMILY:
+			_handle_plant_family(selected)      # 新增：弹出作物选择器
 
-			if require_min_drag and _get_drag_distance() <= MIN_DRAG_PX:
-				# 轻点：选择单个悬停地块
-				if _hovered_grid.x >= 0 and _hovered_grid.y >= 0:
-					_finalize_selection([_hovered_grid])
-			else:
-				# 拖拽：使用实时预览的地块列表
-				if not _preview_tiles.is_empty():
-					_finalize_selection(_preview_tiles.duplicate())
-
-			_preview_tiles.clear()
-			queue_redraw()
+func _cancel_drag() -> void:
+	_dragging = false
+	_preview_tiles.clear()
+	_preview_dirty = false
+	queue_redraw()
 
 func _get_drag_distance() -> float:
 	return _drag_start.distance_to(_drag_end)
@@ -317,7 +373,7 @@ func _update_preview_tiles() -> void:
 	_preview_tiles = _get_tiles_in_rect(rect)
 
 # ============================================================
-# 10. 私有方法 — 上下文菜单
+# 10. 私有方法 — 上下文菜单（SELECT 模式）
 # ============================================================
 
 func _finalize_selection(tiles: Array[Vector2i]) -> void:
@@ -357,4 +413,45 @@ func _on_menu_action(action: String, _tiles: Array) -> void:
 func _on_menu_cancelled() -> void:
 	_selected_tiles.clear()
 	_active_menu = null
+	queue_redraw()
+
+# ============================================================
+# 10. 私有方法 — 采集模式（GATHER 模式）
+# ============================================================
+
+## 采集模式：框选地块 → 委托 GatherActions 判定采集动作 → 派遣工人执行。
+func _handle_gather(tiles: Array[Vector2i]) -> void:
+	var tasks: Array[TaskData] = GatherActions.determine_and_create_tasks(tiles)
+	if tasks.is_empty():
+		print("TileSelector: 所选地块无可采集内容")
+		return
+	var assigned: int = UnitManager.distribute_tasks(tasks)
+	print("TileSelector: 采集派遣 %d/%d 个任务" % [assigned, tasks.size()])
+
+# ============================================================
+# 10. 私有方法 — 种植模式（PLANT_FAMILY 模式）
+# ============================================================
+
+## 种植模式：框选地块 → 弹出作物选择器 → 选中作物后委托 FarmlandManager。
+func _handle_plant_family(tiles: Array[Vector2i]) -> void:
+	_selected_tiles = tiles
+	queue_redraw()
+
+	# 弹出作物选择器，由玩家选择具体作物
+	var picker: CropPicker = CROP_PICKER_SCENE.instantiate()
+	add_child(picker)
+	_active_picker = picker
+	picker.crop_selected.connect(_on_crop_selected.bind(tiles))
+	picker.picker_cancelled.connect(_on_picker_cancelled)
+	picker.show_for_family(_current_family_id)
+
+func _on_crop_selected(crop_id: String, tiles: Array[Vector2i]) -> void:
+	FarmlandManager.assign_tiles(tiles, crop_id)
+	_active_picker = null
+	_selected_tiles.clear()
+	queue_redraw()
+
+func _on_picker_cancelled() -> void:
+	_active_picker = null
+	_selected_tiles.clear()
 	queue_redraw()
