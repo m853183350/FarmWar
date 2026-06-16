@@ -29,6 +29,18 @@
 | `harvested` | `yields: Array` | 作物被收获，yields 为产物数组 |
 | `withered` | — | 作物枯萎/死亡 |
 
+### EventBus 信号（作物在关键阶段发出）
+
+作物在生长和收获过程中通过 EventBus 广播事件，供 FarmlandManager 等其他系统监听：
+
+| EventBus 信号 | 发出时机 | 参数 |
+|------|---------|------|
+| `crop_stage_changed` | `_advance_stage()` 每次阶段推进 | `crop_node, grid_pos, crop_id, old_stage, new_stage, is_mature` |
+| `crop_matured` | 进入最终阶段（`is_mature() == true`） | `crop_node, grid_pos, crop_id` |
+| `crop_harvested` | `harvest()` 执行完成 | `yields, crop_id` |
+
+> 这些并非 Crop 自身定义的信号，而是通过 `EventBus.emit()` 广播的全局事件。FarmlandManager 监听 `crop_matured` 自动创建收获任务，监听 `crop_harvested` 作为兜底实现手动收获后自动补种。
+
 ### 变量
 
 | 变量 | 类型 | 默认值 | 说明 |
@@ -46,6 +58,7 @@
 | `harvest()` | `Array` | 收获作物，返回产物数组，释放自身 |
 | `is_mature()` | `bool` | 是否处于可收获的成熟阶段 |
 | `destroy()` | `void` | 强制销毁（无产出） |
+| `_get_grid_position()` | `Vector2i` | 从地块节点名（`tile_X_Y`）解析网格坐标 |
 
 ### 子类必须覆写
 
@@ -86,9 +99,17 @@ TickSystem.tick_elapsed ──→ _on_tick()
             │
             ├── growth_stage += 1
             ├── _apply_stage_visuals()（更新 region_rect）
+            ├── update_z_index()（阶段变化可能导致渲染层级改变）
             ├── stage_changed.emit(old, new)
             │
-            └── 若为最终阶段 → 停止生长，等待 harvest()
+            ├── EventBus.crop_stage_changed.emit(self, grid_pos, crop_id, old, new, is_mature)
+            │
+            └── 若为最终阶段 (is_mature==true)：
+                    ├── EventBus.crop_matured.emit(self, grid_pos, crop_id)
+                    └── 停止生长，等待 harvest()
+                            │
+                            ▼
+                      harvest() → EventBus.crop_harvested.emit(yields, crop_id)
 ```
 
 ## 关联文档
@@ -97,3 +118,5 @@ TickSystem.tick_elapsed ──→ _on_tick()
 - [2.2小麦.md](2.2小麦.md) — WheatTier1 需求文档
 - [Docs/world/base_tile.md](../world/base_tile.md) — BaseTile 基类（设计参考）
 - [Docs/autoload/material_manager.md](../autoload/material_manager.md) — 材质系统
+- [../autoload/event_bus.md](../autoload/event_bus.md) — EventBus（crop_stage_changed、crop_matured、crop_harvested）
+- [../autoload/farmland_manager.md](../autoload/farmland_manager.md) — FarmlandManager（监听 crop_matured 驱动自动循环）
