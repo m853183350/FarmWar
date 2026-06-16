@@ -28,6 +28,7 @@ signal mode_selected(mode_id: StringName)
 const CONFIG_PATH: String = "res://config/ui/mode_definitions.json"
 const SELECT_SOUND: AudioStream = preload("res://resources/sound/选中.ogg")
 const StringToKey = preload("res://scripts/utils/string_to_key.gd")
+const TextureLoader = preload("res://scripts/utils/texture_loader.gd")
 
 # ============================================================
 # 4. @export 变量
@@ -550,7 +551,8 @@ func _create_key_label(index: int) -> Label:
 
 	return label
 
-## 加载图标纹理；失败时生成纯色占位符。
+## 加载图标纹理；失败时自动使用棋盘格占位符。
+## 委托给 [method TextureLoader.load_texture]，保留 ModeSelector 特定的日志输出。
 func _load_icon_texture(path: String) -> Texture2D:
 	if not path.is_empty() and ResourceLoader.exists(path):
 		var res: Resource = load(path)
@@ -558,24 +560,13 @@ func _load_icon_texture(path: String) -> Texture2D:
 			print("ModeSelector: 成功加载图标纹理: %s" % path)
 			return res as Texture2D
 
-	# 生成占位符纹理
 	print("ModeSelector: 无法加载图标纹理 '%s'，使用占位符" % path)
-	return _create_placeholder_texture()
+	return TextureLoader.create_placeholder(icon_size)
 
-## 生成一个纯色占位纹理（棋盘格风格，便于识别缺失资源）。
+## 生成棋盘格占位纹理。
+## 委托给 [method TextureLoader.create_placeholder]，保留方法签名以兼容现有调用方。
 func _create_placeholder_texture() -> Texture2D:
-	var img: Image = Image.create(icon_size, icon_size, false, Image.FORMAT_RGBA8)
-	var cell_size: int = maxi(icon_size / 4, 1)
-	for y: int in range(icon_size):
-		var row_checker: bool = (y / cell_size) % 2 == 0
-		for x: int in range(icon_size):
-			var col_checker: bool = (x / cell_size) % 2 == 0
-			var is_checker: bool = row_checker == col_checker
-			var c: Color = Color(0.3, 0.3, 0.4, 1.0) if is_checker else Color(0.4, 0.4, 0.5, 1.0)
-			img.set_pixel(x, y, c)
-
-	var tex: ImageTexture = ImageTexture.create_from_image(img)
-	return tex as Texture2D
+	return TextureLoader.create_placeholder(icon_size)
 
 # ============================================================
 # 10. 私有方法 — 交互处理

@@ -28,6 +28,7 @@ signal picker_cancelled()
 # ============================================================
 
 const CROPS_CONFIG_DIR: String = "res://config/crops/"
+const TextureLoader = preload("res://scripts/utils/texture_loader.gd")
 
 # ============================================================
 # 5. 公开变量
@@ -244,16 +245,15 @@ func _create_crop_button(data: Dictionary) -> Button:
 	hbox.add_theme_constant_override("separation", 10)
 	btn.add_child(hbox)
 
-	# 图标（占位：纯色 TextureRect，后续可替换为作物预览图）
+	# 图标（从作物配置的 icon 字段加载纹理，失败时自动使用棋盘格占位符）
 	var icon: TextureRect = TextureRect.new()
 	icon.name = "IconRect"
 	icon.custom_minimum_size = Vector2(48, 48)
 	icon.expand_mode = TextureRect.EXPAND_KEEP_SIZE
 	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	# 生成简单占位图标
-	var placeholder: PlaceholderTexture2D = PlaceholderTexture2D.new()
-	placeholder.size = Vector2(48, 48)
-	icon.texture = placeholder
+	var icon_path: String = data.get("icon", "")
+	icon.texture = TextureLoader.load_texture(icon_path, 48)
+	icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	hbox.add_child(icon)
 
 	# 文字区域
