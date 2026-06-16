@@ -25,6 +25,8 @@ FarmlandManager="*res://scripts/autoload/farmland_manager.gd"
 UnitManager="*res://scripts/units/unit_manager.gd"
 PathfindingManager="*res://scripts/autoload/pathfinding_manager.gd"
 DebugOverlay="*res://scripts/ui/debug_overlay.gd"
+DebugOverlayLeft="*res://scripts/ui/debug_overlay_left.gd"
+DebugUI="*res://scripts/ui/debug_ui.gd"
 
 [display]
 

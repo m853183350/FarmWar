@@ -5,6 +5,7 @@
 	"tier": 1,
 	"description": "小麦，文明起步阶段的最好的伙伴",
 	"scene_path": "res://scenes/crops/wheat_tire_1.tscn",
+	"icon":"res://assets/sprites/UI/icons/小麦.png",
 
 	"soil_requirements": {
 		"min_moisture": 0.4,

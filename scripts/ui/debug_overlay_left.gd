@@ -1,18 +1,20 @@
-## Debug 叠加层（右侧面板）。
+## Debug 叠加层（左侧面板）。
 ##
-## 作为 [DebugUI] 的子节点，位于屏幕右侧（宽度 1/3 窗口宽）。
+## 作为 [DebugUI] 的子节点，位于屏幕左侧（宽度 1/3 窗口宽）。
 ## 挂载在 Layer 5（Debug 层），独立渲染。
 ## 显示/隐藏和翻页由 [DebugUI] 统一控制。
 ## 鼠标事件穿透，不阻挡任何操作。
+##
+## 与 [DebugOverlay] 对称，主要用于显示工人任务列表等结构化数据。
 ##
 ## 各系统通过 [method set_entry] 写入键值对数据，
 ## 叠加层按 key 字母序渲染为彩色纯文本。
 ##
 ## 使用方式：
 ##   [codeblock]
-##   DebugOverlay.set_entry("fps", Engine.get_frames_per_second())
-##   DebugOverlay.set_entry("tick", TickSystem.get_tick_count())
-##   DebugOverlay.remove_entry("fps")
+##   DebugOverlayLeft.set_entry("fps", Engine.get_frames_per_second())
+##   DebugOverlayLeft.set_entry("tick", TickSystem.get_tick_count())
+##   DebugOverlayLeft.remove_entry("fps")
 ##   [/codeblock]
 extends CanvasLayer
 
@@ -152,20 +154,18 @@ func _setup_font() -> void:
 	_content_label.add_theme_constant_override("line_separation", LINE_SPACING)
 
 ## 更新子控件的位置和大小（屏幕尺寸变化时调用）。
+## 与 [DebugOverlay] 对称：位于屏幕左侧。
 func _update_layout() -> void:
 	var viewport_size: Vector2 = get_viewport().get_visible_rect().size
 	var panel_width: float = viewport_size.x * PANEL_WIDTH_RATIO
 	var panel_height: float = viewport_size.y
 
-	# 背景：右上角
-	_bg_rect.position = Vector2(viewport_size.x - panel_width, 0.0)
+	# 背景：左侧
+	_bg_rect.position = Vector2(0.0, 0.0)
 	_bg_rect.size = Vector2(panel_width, panel_height)
 
 	# 内容文本：带内边距
-	_content_label.position = Vector2(
-		viewport_size.x - panel_width + H_MARGIN,
-		V_MARGIN
-	)
+	_content_label.position = Vector2(H_MARGIN, V_MARGIN)
 	_content_label.size = Vector2(
 		panel_width - H_MARGIN * 2.0,
 		panel_height - V_MARGIN * 2.0 - PAGE_INDICATOR_HEIGHT
@@ -173,7 +173,7 @@ func _update_layout() -> void:
 
 	# 页码：右下角
 	_page_label.position = Vector2(
-		viewport_size.x - panel_width + H_MARGIN,
+		H_MARGIN,
 		panel_height - PAGE_INDICATOR_HEIGHT - V_MARGIN
 	)
 	_page_label.size = Vector2(panel_width - H_MARGIN * 2.0, PAGE_INDICATOR_HEIGHT)

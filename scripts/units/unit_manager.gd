@@ -217,6 +217,8 @@ func _register_worker(worker: FarmWorker) -> void:
 		worker.task_completed.connect(_on_worker_task_completed.bind(worker))
 	if not worker.queue_empty.is_connected(_on_worker_queue_empty):
 		worker.queue_empty.connect(_on_worker_queue_empty.bind(worker))
+	if not worker.state_changed.is_connected(_on_worker_state_changed):
+		worker.state_changed.connect(_on_worker_state_changed.bind(worker))
 
 ## 注销工人。
 func _unregister_worker(worker: FarmWorker) -> void:
@@ -225,6 +227,8 @@ func _unregister_worker(worker: FarmWorker) -> void:
 		worker.task_completed.disconnect(_on_worker_task_completed)
 	if worker.queue_empty.is_connected(_on_worker_queue_empty):
 		worker.queue_empty.disconnect(_on_worker_queue_empty)
+	if worker.state_changed.is_connected(_on_worker_state_changed):
+		worker.state_changed.disconnect(_on_worker_state_changed)
 
 # ============================================================
 # 10. 私有方法 — 信号回调
@@ -235,6 +239,11 @@ func _on_worker_task_completed(_task: TaskData, worker: FarmWorker) -> void:
 	if EventBus:
 		EventBus.worker_task_completed.emit(worker.unit_id, _task)
 	_try_assign_pending_to_worker(worker)
+
+## 工人状态变化时：发出 EventBus 广播。
+func _on_worker_state_changed(old_state: int, new_state: int, worker: FarmWorker) -> void:
+	if EventBus:
+		EventBus.worker_state_changed.emit(worker.unit_id, old_state, new_state)
 
 ## 工人队列清空时：发出 EventBus 广播，尝试分配待分配池中的剩余任务。
 func _on_worker_queue_empty(worker: FarmWorker) -> void:
