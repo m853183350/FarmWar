@@ -93,4 +93,28 @@ The game is divided into **in-match systems** and **meta-game systems**:
 
 ## Current State
 
-The project is at the design phase. `main.tscn` is an empty `Node2D` scene. No scripts, scenes, resources, or assets have been created yet. The coding standards and game design are documented; implementation is about to begin.
+项目已进入**早期实现阶段**。已完成的核心系统：
+
+**已实现：**
+- **TickSystem** — 逻辑时钟 Autoload（独立线程，20 tick/s）
+- **EventBus** — 全局事件总线（21 个信号，解耦系统间通信）
+- **地块系统** — `BaseTile` + 4 种子类（DirtTile / FarmlandTile / StoneTile / OceanTile），`TerrainGenerator` 随机生成
+- **作物系统** — `Crop` 基类 + `WheatTier1`，生长阶段 + Tick 驱动 + 收获产物
+- **农场工人** — `FarmWorker`（extends UnitBase），任务队列驱动自动耕作循环
+- **FarmlandManager** — 地块→作物分配 + 事件驱动的自动耕作（翻耕→种植→等待成熟→收获）
+- **UnitManager** — 工人生命周期管理 + 任务分配（最近优先策略）
+- **PathfindingManager** — 多套成本网格（ground/flying/aquatic） + 异步 A* 寻路 + 流场
+- **TileActions / GatherActions** — 地块转化（翻耕/挖掘/种植/收获）+ 采集判定
+- **ZIndexConfig** — 渲染排序系统（Y 轴排序 + 10 层类型优先级）
+- **ModeSelector** — 模式切换 UI（光标/采集/作物）
+- **Storage** — 分区仓库（监听收获事件自动入库）
+- **DebugUI / DebugOverlay** — F3 调试叠加层（分左右两侧，F4/F5 翻页）
+
+**已规划、未实现：**
+- 经济/商店系统、建筑系统、道具/Buff 系统
+- 敌人 AI、天气系统、科技树系统
+- 局外系统（流程控制、局外成长、设置、存档）
+- 调试控制台（`/` 键命令输入）
+- 音频管理器（AudioManager Autoload）
+
+**当前地图规格：** 32×32（~1024 地块），可扩展到 200×200。`main.tscn` 加载 world 场景（含 Camera2D、TileSelector、ModeSelector HUD）。
