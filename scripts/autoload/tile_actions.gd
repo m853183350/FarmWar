@@ -12,6 +12,8 @@
 ## 而是通过 preload 的 Script 常量和 duck typing 访问，确保 autoload 编译独立性。
 extends Node
 
+const WorldUtils := preload("res://scripts/utils/world_utils.gd")
+
 # ============================================================
 # 3. 常量
 # ============================================================
@@ -285,29 +287,22 @@ func _get_conversions_for(action: String) -> Array:
 # ============================================================
 
 ## 解析世界节点引用。
-## 优先使用传入的覆盖节点，其次使用缓存，最后通过 group "world" 查找。
+## 优先使用传入的覆盖节点，其次使用缓存，最后通过 WorldUtils 查找。
 func _resolve_world(world_override: Node2D) -> Node2D:
 	if world_override:
 		return world_override
 	if _world_cache and is_instance_valid(_world_cache):
 		return _world_cache
-	_world_cache = get_tree().get_first_node_in_group("world") as Node2D
+	_world_cache = WorldUtils.get_world()
 	return _world_cache
 
-## 在 world 中按网格坐标查找已有的地块节点。
-## 地块节点命名规则：tile_X_Y（由 [TerrainGenerator] 保证）。
-func _find_tile(world: Node2D, grid_pos: Vector2i) -> Node2D:
-	var tile_name: String = "tile_%d_%d" % [grid_pos.x, grid_pos.y]
-	var tile: Node = world.get_node_or_null(tile_name)
-	if tile and tile is Node2D:
-		return tile as Node2D
-	return null
+# _find_tile 已迁移至 WorldUtils.find_tile()
 
 ## 尝试对单个地块执行转化。
 ## 检查地块的场景路径是否匹配任一转化规则的 [code]source[/code]，
 ## 匹配则替换为目标场景。返回 [code]true[/code] 表示成功转化。
 func _try_convert_tile(world: Node2D, grid_pos: Vector2i, conversions: Array) -> bool:
-	var old_tile: Node2D = _find_tile(world, grid_pos)
+	var old_tile: Node2D = WorldUtils.find_tile(world, grid_pos)
 	if old_tile == null:
 		return false
 
@@ -396,7 +391,7 @@ func _create_converted_data(old_data: Resource, target_tile_type: int) -> Resour
 ## 尝试在单个地块上种植作物。
 ## 检查地块是否为 FARMLAND 且无作物占用，通过则实例化作物场景并调用 [method Crop.plant]。
 func _try_plant_crop(world: Node2D, grid_pos: Vector2i, crop_scene: PackedScene) -> bool:
-	var tile: Node2D = _find_tile(world, grid_pos)
+	var tile: Node2D = WorldUtils.find_tile(world, grid_pos)
 	if tile == null:
 		return false
 
@@ -444,7 +439,7 @@ func _try_plant_crop(world: Node2D, grid_pos: Vector2i, crop_scene: PackedScene)
 ##
 ## 返回产物数组（[Array] of [Dictionary]），无作物或未成熟时返回空数组。
 func _try_harvest_crop(world: Node2D, grid_pos: Vector2i) -> Array:
-	var tile: Node2D = _find_tile(world, grid_pos)
+	var tile: Node2D = WorldUtils.find_tile(world, grid_pos)
 	if tile == null:
 		return []
 
@@ -508,7 +503,7 @@ func _try_harvest_crop(world: Node2D, grid_pos: Vector2i) -> Array:
 ## 在挖掘前从原石质地块收集石材产出。
 ## 通过 duck typing 调用 get_dig_produce()，非石质地块返回 0。
 func _collect_dig_produce(world: Node2D, grid_pos: Vector2i) -> int:
-	var tile: Node2D = _find_tile(world, grid_pos)
+	var tile: Node2D = WorldUtils.find_tile(world, grid_pos)
 	if tile == null:
 		return 0
 	if tile.has_method("get_dig_produce"):

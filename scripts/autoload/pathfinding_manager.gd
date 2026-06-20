@@ -9,6 +9,8 @@
 ##   - 提供异步寻路接口（后台线程，主线程不阻塞）
 extends Node
 
+const WorldUtils := preload("res://scripts/utils/world_utils.gd")
+
 # ============================================================
 # 信号
 # ============================================================
@@ -202,7 +204,7 @@ func request_flow_field(goal: Vector2i, cost_grid_type: String = "ground") -> in
 # ============================================================
 
 func _on_terrain_generated() -> void:
-	var world: Node2D = _get_world()
+	var world: Node2D = WorldUtils.get_world()
 	if world == null:
 		push_error("PathfindingManager: 无法获取 world 节点，成本网格构建失败")
 		return
@@ -239,7 +241,7 @@ func _build_cost_grid(world: Node2D, type: String) -> Array[Array]:
 
 	# 遍历所有子节点读取地块数据
 	for child: Node in world.get_children():
-		var td = _get_tile_data_from_node(child)
+		var td = WorldUtils.get_tile_data(child)
 		if td == null:
 			continue
 
@@ -256,7 +258,7 @@ func _on_terrain_changed(tiles: Array) -> void:
 	if not _initialized:
 		return
 
-	var world: Node2D = _get_world()
+	var world: Node2D = WorldUtils.get_world()
 	if world == null:
 		return
 
@@ -444,23 +446,4 @@ func _retry_request_flow_field(request_id: int, goal: Vector2i, grid_type: Strin
 # 私有方法 — 工具
 # ============================================================
 
-func _get_world() -> Node2D:
-	var tree := get_tree()
-	if tree == null:
-		return null
-	var nodes := tree.get_nodes_in_group("world")
-	if nodes.is_empty():
-		return null
-	return nodes[0] as Node2D
-
-
-func _get_tile_data_from_node(node: Node) -> Resource:
-	if node is BaseTile:
-		return (node as BaseTile).get_tile_data()
-
-	if not node.has_meta("tile_data"):
-		return null
-	var meta_data = node.get_meta("tile_data", null)
-	if meta_data is TileInfo:
-		return meta_data as TileInfo
-	return null
+# 世界查找和地块数据读取已迁移至 WorldUtils

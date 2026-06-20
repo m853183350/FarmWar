@@ -10,6 +10,8 @@
 ##   4. 运行游戏即可看到生成的地形
 class_name TerrainGenerator extends Node2D
 
+const WorldUtils := preload("res://scripts/utils/world_utils.gd")
+
 # ============================================================
 # 1. 信号
 # ============================================================
@@ -346,8 +348,7 @@ func _create_tile_data(x: int, y: int, tile_type: int, variant: String = "") -> 
 	return data
 
 func _find_tile_node(grid_x: int, grid_y: int) -> Node:
-	var expected_name: String = "tile_%d_%d" % [grid_x, grid_y]
-	return get_node_or_null(expected_name)
+	return WorldUtils.find_tile(self, Vector2i(grid_x, grid_y))
 
 # ============================================================
 # 10. 私有方法 — 事件处理

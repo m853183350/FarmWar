@@ -12,6 +12,8 @@
 ## 通过 Autoload 全局访问：[code]FarmlandManager[/code]
 extends Node
 
+const WorldUtils := preload("res://scripts/utils/world_utils.gd")
+
 # ============================================================
 # 2. 枚举
 # ============================================================
@@ -64,7 +66,7 @@ func assign_tiles(tiles: Array[Vector2i], crop_id: String) -> void:
 		return
 
 	for grid_pos: Vector2i in tiles:
-		var tile: Node2D = _find_tile(world, grid_pos)
+		var tile: Node2D = WorldUtils.find_tile(world, grid_pos)
 		if tile == null:
 			continue
 
@@ -192,7 +194,7 @@ func _on_crop_harvested(yields: Array, crop_id: String) -> void:
 		var info: Dictionary = _assignments[grid_pos] as Dictionary
 		if info.get("state", -1) == AssignState.GROWING and info.get("crop_id", "") == crop_id:
 			var world: Node2D = _resolve_world()
-			var tile: Node2D = _find_tile(world, grid_pos)
+			var tile: Node2D = WorldUtils.find_tile(world, grid_pos)
 			if tile == null or not _has_crop(tile):
 				info["state"] = AssignState.NEEDS_PLANT
 				_assignments[grid_pos] = info
@@ -224,32 +226,19 @@ func _create_harvest_task(grid_pos: Vector2i, crop_id: String) -> void:
 # 10. 私有方法 — 世界与地块
 # ============================================================
 
-## 解析世界节点引用。
+## 解析世界节点引用（带缓存）。
 func _resolve_world() -> Node2D:
 	if _world_cache and is_instance_valid(_world_cache):
 		return _world_cache
-	_world_cache = get_tree().get_first_node_in_group("world") as Node2D
+	_world_cache = WorldUtils.get_world()
 	return _world_cache
 
-## 在 world 中按网格坐标查找地块节点。
-func _find_tile(world: Node2D, grid_pos: Vector2i) -> Node2D:
-	var tile_name: String = "tile_%d_%d" % [grid_pos.x, grid_pos.y]
-	var tile: Node = world.get_node_or_null(tile_name)
-	if tile and tile is Node2D:
-		return tile as Node2D
-	return null
-
-## 获取地块的 TileType 枚举值（通过 duck typing 读取 tile_data）。
+## 获取地块的 TileType 枚举值。
 ## DIRT=0, STONE=1, OCEAN=2, FARMLAND=3
 func _get_tile_type(tile: Node2D) -> int:
-	if tile.has_method("get_tile_data"):
-		var data = tile.get_tile_data()
-		if data != null:
-			return data.tile_type
-	elif tile.has_meta("tile_data"):
-		var data = tile.get_meta("tile_data")
-		if data != null:
-			return data.tile_type
+	var data: Resource = WorldUtils.get_tile_data(tile)
+	if data != null:
+		return data.tile_type
 	return -1
 
 ## 检查地块上是否有作物。

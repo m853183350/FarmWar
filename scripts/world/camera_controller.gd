@@ -6,6 +6,8 @@
 ## - 地块左键交互由 [TileSelector] 接管
 extends Camera2D
 
+const JsonConfigLoader := preload("res://scripts/utils/json_loader.gd")
+
 # ============================================================
 # 3. 常量
 # ============================================================
@@ -133,37 +135,11 @@ func _update_zoom(delta: float) -> void:
 	zoom = Vector2(new_zoom, new_zoom)
 
 
-## 从 [constant CONFIG_PATH] 加载并解析 JSON 配置文件。
-## 返回解析后的 Dictionary。加载失败时返回空字典。
-func _load_config_file() -> Dictionary:
-	if not FileAccess.file_exists(CONFIG_PATH):
-		push_error("CameraController: 配置文件不存在: %s" % CONFIG_PATH)
-		return {}
+# _load_config_file 已迁移至 JsonConfigLoader.load_config_file()
 
-	var file: FileAccess = FileAccess.open(CONFIG_PATH, FileAccess.READ)
-	if file == null:
-		push_error("CameraController: 无法打开配置文件: %s" % CONFIG_PATH)
-		return {}
-
-	var text: String = file.get_as_text()
-	file.close()
-
-	var json: JSON = JSON.new()
-	var err: Error = json.parse(text)
-	if err != OK:
-		push_error("CameraController: JSON 解析失败 (行 %d): %s" % [json.get_error_line(), json.get_error_message()])
-		return {}
-
-	var data = json.data
-	if data is Dictionary:
-		return data as Dictionary
-
-	push_error("CameraController: 配置文件顶层应为 JSON 对象")
-	return {}
-
-## 从 [member _load_config_file] 读取相机配置并覆盖默认值。
+## 从 JsonConfigLoader 读取相机配置并覆盖默认值。
 func _apply_config() -> void:
-	var config: Dictionary = _load_config_file()
+	var config: Dictionary = JsonConfigLoader.load_config_file(CONFIG_PATH, "CameraController")
 	if config.is_empty():
 		return
 

@@ -10,6 +10,8 @@
 ## 通过 Autoload 全局访问：[code]GatherActions[/code]
 extends Node
 
+const WorldUtils := preload("res://scripts/utils/world_utils.gd")
+
 # ============================================================
 # 3. 常量
 # ============================================================
@@ -50,13 +52,13 @@ func _ready() -> void:
 ## 返回 [Array] of [TaskData]。
 func determine_and_create_tasks(tiles: Array[Vector2i]) -> Array[TaskData]:
 	var tasks: Array[TaskData] = []
-	var world: Node2D = _resolve_world()
+	var world: Node2D = WorldUtils.get_world()
 	if world == null:
 		push_error("GatherActions: 无法获取 world 节点")
 		return tasks
 
 	for grid_pos: Vector2i in tiles:
-		var tile: Node2D = _find_tile(world, grid_pos)
+		var tile: Node2D = WorldUtils.find_tile(world, grid_pos)
 		if tile == null:
 			continue
 		var rule: Dictionary = _match_rule(tile)
@@ -214,14 +216,4 @@ func _parse_task_type(type_str: String) -> int:
 # 10. 私有方法 — 世界与地块查找
 # ============================================================
 
-## 解析 world 节点引用（通过 group "world"）。
-func _resolve_world() -> Node2D:
-	return get_tree().get_first_node_in_group("world") as Node2D
-
-## 在 world 中按网格坐标查找地块节点。
-func _find_tile(world: Node2D, grid_pos: Vector2i) -> Node2D:
-	var tile_name: String = "tile_%d_%d" % [grid_pos.x, grid_pos.y]
-	var tile: Node = world.get_node_or_null(tile_name)
-	if tile and tile is Node2D:
-		return tile as Node2D
-	return null
+# _resolve_world 和 _find_tile 已迁移至 WorldUtils

@@ -7,6 +7,8 @@
 ## 修改生长阶段、收获产物、地块需求等只需编辑 JSON，无需改代码。
 class_name WheatTier1 extends Crop
 
+const JsonConfigLoader := preload("res://scripts/utils/json_loader.gd")
+
 # ============================================================
 # 3. 常量
 # ============================================================
@@ -27,7 +29,7 @@ var _config_cache: Dictionary = {}
 func _ready() -> void:
 	# 先加载 JSON 配置并缓存，再调用父类 _ready()
 	# 父类 _ready() 会调用 _get_stage_data() 等方法，此时缓存已就绪
-	_config_cache = _load_config_file()
+	_config_cache = JsonConfigLoader.load_config_file(CONFIG_PATH, "WheatTier1")
 	super._ready()
 
 # ============================================================
@@ -68,30 +70,4 @@ func _get_harvest_yields() -> Array:
 # 10. 私有方法 — JSON 加载
 # ============================================================
 
-## 从 [constant CONFIG_PATH] 加载并解析 JSON 配置文件。
-## 返回解析后的 Dictionary。加载失败时返回空字典。
-func _load_config_file() -> Dictionary:
-	if not FileAccess.file_exists(CONFIG_PATH):
-		push_error("WheatTier1: 配置文件不存在: %s" % CONFIG_PATH)
-		return {}
-
-	var file: FileAccess = FileAccess.open(CONFIG_PATH, FileAccess.READ)
-	if file == null:
-		push_error("WheatTier1: 无法打开配置文件: %s" % CONFIG_PATH)
-		return {}
-
-	var text: String = file.get_as_text()
-	file.close()
-
-	var json: JSON = JSON.new()
-	var err: Error = json.parse(text)
-	if err != OK:
-		push_error("WheatTier1: JSON 解析失败 (行 %d): %s" % [json.get_error_line(), json.get_error_message()])
-		return {}
-
-	var data = json.data
-	if data is Dictionary:
-		return data as Dictionary
-
-	push_error("WheatTier1: 配置文件顶层应为 JSON 对象")
-	return {}
+# _load_config_file 已迁移至 JsonConfigLoader.load_config_file()

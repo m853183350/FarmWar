@@ -10,6 +10,8 @@
 ##   [code]UnitManager.distribute_tasks(task_list)[/code]
 extends Node
 
+const WorldUtils := preload("res://scripts/utils/world_utils.gd")
+
 # ============================================================
 # 1. 信号
 # ============================================================
@@ -57,7 +59,7 @@ var _worker_id_counter: int = 0
 func spawn_worker(grid_pos: Vector2i) -> FarmWorker:
 	if debug_print_flag:
 		print("UnitManager: 请求生成工人于 %s" % grid_pos)
-	var world: Node2D = _get_world()
+	var world: Node2D = WorldUtils.get_world()
 	if world == null:
 		push_error("UnitManager: 无法获取 world 节点，不能生成工人")
 		return null
@@ -257,8 +259,5 @@ func _on_worker_queue_empty(worker: FarmWorker) -> void:
 		task_assigned.emit(task, worker.unit_id)
 
 # ============================================================
-# 10. 私有方法 — 世界查找
+# 10. 私有方法 — 世界查找（已迁移至 WorldUtils）
 # ============================================================
-
-func _get_world() -> Node2D:
-	return get_tree().get_first_node_in_group("world") as Node2D

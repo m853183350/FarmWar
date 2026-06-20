@@ -34,6 +34,12 @@ signal queue_empty()
 # 3. 常量
 # ============================================================
 
+## 世界/地块工具函数。
+const WorldUtils := preload("res://scripts/utils/world_utils.gd")
+
+## JSON 配置文件加载工具。
+const JsonConfigLoader := preload("res://scripts/utils/json_loader.gd")
+
 ## 农场工人配置文件路径。
 const CONFIG_PATH: String = "res://config/units/farm_worker.json"
 
@@ -83,9 +89,6 @@ var _max_tasks: int = 1000
 ## 等待子任务完成的父任务列表。
 var _pending_parents: Array[TaskData] = []
 
-## 世界节点缓存（用于查找地块）。
-var _world_cache: Node2D = null
-
 ## JSON 配置缓存。
 var _config_cache: Dictionary = {}
 
@@ -100,7 +103,7 @@ func _get_unit_type_name() -> String:
 	return "farm_worker"
 
 func _load_config() -> void:
-	_config_cache = _load_config_file()
+	_config_cache = JsonConfigLoader.load_config_file(CONFIG_PATH, "FarmWorker")
 	if _config_cache.is_empty():
 		push_warning("FarmWorker: 配置文件为空或加载失败，使用默认值")
 		return
@@ -273,7 +276,7 @@ func _start_task(task: TaskData) -> void:
 func _start_move_task(task: TaskData) -> void:
 	task.status = TaskData.TaskStatus.IN_PROGRESS
 	task.total_ticks = 0
-	_set_move_target_world(_tile_to_world(task.target_tile))
+	_set_move_target_world(WorldUtils.tile_to_world(task.target_tile))
 	_set_state(UnitState.MOVING)
 	animation_controller.play("walk")
 	_start_footstep_sfx()
@@ -295,7 +298,7 @@ func _start_tile_task(task: TaskData, base_ticks: int, validator: Callable) -> v
 		_begin_work_phase(task)
 	else:
 		# 需要移动：通过 HPA* 寻路直接导航到目标地块中心
-		_set_move_target_world(_tile_to_world(task.target_tile))
+		_set_move_target_world(WorldUtils.tile_to_world(task.target_tile))
 		_set_state(UnitState.MOVING)
 		animation_controller.play("walk")
 		_start_footstep_sfx()
@@ -333,7 +336,7 @@ func _continue_tile_task(task: TaskData) -> void:
 
 	if state == UnitState.IDLE and not is_adjacent_to(task.target_tile):
 		# 移动完成但未达工作条件，重新导航到目标地块中心
-		_set_move_target_world(_tile_to_world(task.target_tile))
+		_set_move_target_world(WorldUtils.tile_to_world(task.target_tile))
 		_set_state(UnitState.MOVING)
 		animation_controller.play("walk")
 		_start_footstep_sfx()
@@ -410,7 +413,7 @@ func _begin_work_phase(task: TaskData) -> void:
 
 ## 执行任务的实际操作（调用 TileActions 等）。
 func _execute_task_action(task: TaskData) -> void:
-	var world: Node2D = _get_world()
+	var world: Node2D = WorldUtils.get_world()
 	if world == null:
 		task.status = TaskData.TaskStatus.FAILED
 		return
@@ -451,10 +454,10 @@ func _execute_gather_action(task: TaskData, world: Node2D) -> void:
 
 ## 验证地块是否可以翻耕。返回空字符串表示通过，否则返回失败原因。
 func _validate_plow(task: TaskData) -> String:
-	var world: Node2D = _get_world()
+	var world: Node2D = WorldUtils.get_world()
 	if world == null:
 		return "无法获取世界节点"
-	var tile: Node2D = _find_tile(world, task.target_tile)
+	var tile: Node2D = WorldUtils.find_tile(world, task.target_tile)
 	if tile == null:
 		return "地块不存在"
 	if not tile.has_method("can_be_plowed"):
@@ -465,14 +468,14 @@ func _validate_plow(task: TaskData) -> String:
 
 ## 验证地块是否可以种植。返回空字符串表示通过。
 func _validate_plant(task: TaskData) -> String:
-	var world: Node2D = _get_world()
+	var world: Node2D = WorldUtils.get_world()
 	if world == null:
 		return "无法获取世界节点"
-	var tile: Node2D = _find_tile(world, task.target_tile)
+	var tile: Node2D = WorldUtils.find_tile(world, task.target_tile)
 	if tile == null:
 		return "地块不存在"
 	# 检查是否为农田
-	var tile_data = _get_tile_data(tile)
+	var tile_data = WorldUtils.get_tile_data(tile)
 	if tile_data == null:
 		return "无法获取地块数据"
 	if tile_data.tile_type != 3:  # TileType.FARMLAND
@@ -485,10 +488,10 @@ func _validate_plant(task: TaskData) -> String:
 
 ## 验证地块是否可以收获。返回空字符串表示通过。
 func _validate_harvest(task: TaskData) -> String:
-	var world: Node2D = _get_world()
+	var world: Node2D = WorldUtils.get_world()
 	if world == null:
 		return "无法获取世界节点"
-	var tile: Node2D = _find_tile(world, task.target_tile)
+	var tile: Node2D = WorldUtils.find_tile(world, task.target_tile)
 	if tile == null:
 		return "地块不存在"
 	# 检查是否有作物
@@ -506,10 +509,10 @@ func _validate_harvest(task: TaskData) -> String:
 
 ## 验证地块是否可以挖掘。返回空字符串表示通过。
 func _validate_dig(task: TaskData) -> String:
-	var world: Node2D = _get_world()
+	var world: Node2D = WorldUtils.get_world()
 	if world == null:
 		return "无法获取世界节点"
-	var tile: Node2D = _find_tile(world, task.target_tile)
+	var tile: Node2D = WorldUtils.find_tile(world, task.target_tile)
 	if tile == null:
 		return "地块不存在"
 	if not tile.has_method("can_be_dug"):
@@ -521,10 +524,10 @@ func _validate_dig(task: TaskData) -> String:
 ## 验证地块是否可执行采集操作。返回空字符串表示通过。
 ## 采集任务由 GatherActions 预筛选，本验证仅做基本检查（地块存在且可通行）。
 func _validate_gather(task: TaskData) -> String:
-	var world: Node2D = _get_world()
+	var world: Node2D = WorldUtils.get_world()
 	if world == null:
 		return "无法获取世界节点"
-	var tile: Node2D = _find_tile(world, task.target_tile)
+	var tile: Node2D = WorldUtils.find_tile(world, task.target_tile)
 	if tile == null:
 		return "地块不存在"
 	return ""
@@ -578,7 +581,7 @@ func is_adjacent_to(tile: Vector2i) -> bool:
 
 ## 查找目标地块最近的可通行相邻格（已弃用，仅保留向后兼容）。
 func _find_nearest_adjacent(target_tile: Vector2i) -> Vector2i:
-	var world: Node2D = _get_world()
+	var world: Node2D = WorldUtils.get_world()
 	if world == null:
 		return target_tile  # 降级：直接移动到目标地块位置
 
@@ -587,7 +590,7 @@ func _find_nearest_adjacent(target_tile: Vector2i) -> Vector2i:
 	var best_dist: float = INF
 
 	for adj: Vector2i in adjacents:
-		var tile: Node2D = _find_tile(world, adj)
+		var tile: Node2D = WorldUtils.find_tile(world, adj)
 		if tile == null:
 			continue
 		# 检查是否可通行
@@ -663,70 +666,12 @@ func _get_work_sound(task_type: int) -> String:
 			return ""
 
 # ============================================================
-# 10. 私有方法 — 世界交互
-# ============================================================
-
-## 获取世界节点（通过 group "world" 缓存）。
-func _get_world() -> Node2D:
-	if _world_cache and is_instance_valid(_world_cache):
-		return _world_cache
-	_world_cache = get_tree().get_first_node_in_group("world") as Node2D
-	return _world_cache
-
-## 在 world 中按网格坐标查找地块节点。
-func _find_tile(world: Node2D, grid_pos: Vector2i) -> Node2D:
-	var tile_name: String = "tile_%d_%d" % [grid_pos.x, grid_pos.y]
-	var tile: Node = world.get_node_or_null(tile_name)
-	if tile and tile is Node2D:
-		return tile as Node2D
-	return null
-
-## 获取地块的 TileInfo 数据。
-func _get_tile_data(tile: Node2D) -> Resource:
-	if tile.has_method("get_tile_data"):
-		return tile.get_tile_data()
-	if tile.has_meta("tile_data"):
-		return tile.get_meta("tile_data")
-	return null
-
-## 网格坐标转世界坐标（地块中心）。
-func _tile_to_world(tile: Vector2i) -> Vector2:
-	return Vector2(tile.x * TILE_SIZE + TILE_SIZE / 2.0, tile.y * TILE_SIZE + TILE_SIZE / 2.0)
-
-# ============================================================
 # 10. 私有方法 — 工具
 # ============================================================
 
 ## 推送任务失败日志并发出信号。
 func _push_failed(task: TaskData, reason: String) -> void:
 	push_warning("FarmWorker: 任务 %d (%s) 失败: %s" % [task.task_id, task.get_type_name(), reason])
-
-## 加载 JSON 配置文件。
-func _load_config_file() -> Dictionary:
-	if not FileAccess.file_exists(CONFIG_PATH):
-		push_error("FarmWorker: 配置文件不存在: %s" % CONFIG_PATH)
-		return {}
-
-	var file: FileAccess = FileAccess.open(CONFIG_PATH, FileAccess.READ)
-	if file == null:
-		push_error("FarmWorker: 无法打开配置文件: %s" % CONFIG_PATH)
-		return {}
-
-	var text: String = file.get_as_text()
-	file.close()
-
-	var json: JSON = JSON.new()
-	var err: Error = json.parse(text)
-	if err != OK:
-		push_error("FarmWorker: JSON 解析失败 (行 %d): %s" % [json.get_error_line(), json.get_error_message()])
-		return {}
-
-	var data = json.data
-	if data is Dictionary:
-		return data as Dictionary
-
-	push_error("FarmWorker: 配置文件顶层应为 JSON 对象")
-	return {}
 
 # ============================================================
 # 8. 生命周期方法 — 信号连接
