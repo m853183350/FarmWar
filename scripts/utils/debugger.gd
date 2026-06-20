@@ -10,6 +10,7 @@ extends Node
 const TaskDataClass: GDScript = preload("res://scripts/units/task_data.gd")
 @export var ModeSelector: Node
 
+@export var player:Node
 # ============================================================
 # 3. 常量
 # ============================================================
@@ -44,6 +45,7 @@ func _ready() -> void:
 	# UnitManager.spawn_worker(Vector2i(5, 3))
 	# UnitManager.spawn_worker(Vector2i(5, 4))
 	# UnitManager.spawn_worker(Vector2i(5, 5))
+	player.get_node("PropManager").add_prop("sunshine_coin")
 	
 	# UnitManager.spawn_worker(Vector2i(5, 3))
 	# UnitManager.spawn_worker(Vector2i(5, 4))

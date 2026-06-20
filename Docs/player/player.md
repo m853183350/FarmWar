@@ -13,6 +13,7 @@
 | 依赖 | 说明 |
 |------|------|
 | `Storage` | 在 `_ready()` 中以代码方式创建 |
+| `PropManager` | 在 `_ready()` 中以代码方式创建 |
 
 ## 公开 API
 
@@ -34,9 +35,13 @@
 
 ```
 Player (Node)
-  └── Storage (Storage)
-        ├── contents: Dictionary
-        └── catalog: Dictionary
+  ├── Storage (Storage)
+  │     ├── contents: Dictionary
+  │     └── catalog: Dictionary
+  └── PropManager (PropManager)
+        ├── props: Dictionary
+        ├── prop_library: Dictionary
+        └── _signal_bindings: Dictionary
 ```
 
 ## 后续扩展

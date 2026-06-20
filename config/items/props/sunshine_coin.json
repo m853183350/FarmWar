@@ -1,0 +1,16 @@
+{
+	"prop_id": "sunshine_coin",
+	"prop_name": "阳光硬币",
+	"description": "每当有作物成熟时，获得1枚金币。阳光照耀下，硬币闪闪发光。",
+	"rarity": "common",
+	"icon_path": "",
+	"max_stack": 10,
+	"trigger_signal": "crop_matured",
+	"trigger_condition": {},
+	"effect_type": "add_storage_item",
+	"effect_params": {
+		"item_id": "money",
+		"amount": 1.0
+	},
+	"tags": ["economy", "crop"]
+}

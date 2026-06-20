@@ -37,6 +37,7 @@
 |------|--------|------|
 | `get_amount(item_id: String)` | `float` | 获取物品在所有分区中的总数量 |
 | `has_item(item_id: String, amount: float)` | `bool` | 检查是否拥有足够数量的物品 |
+| `add_item(item_id: String, amount: float)` | `void` | 向仓库添加物品（供外部系统调用） |
 | `remove_item(item_id: String, amount: float)` | `bool` | 移除指定数量的物品，不足返回 false |
 | `print_contents()` | `void` | 在控制台打印仓库当前内容 |
 
@@ -77,7 +78,7 @@
 }
 ```
 
-类别映射：`farm_product` → `farm_products`，其他 → `items`（默认）
+类别映射：`farm_product` → `farm_products`，`currency` → `items`，其他 → `items`（默认）
 
 ## 事件流
 

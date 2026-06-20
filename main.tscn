@@ -45,6 +45,7 @@ layer = 100000
 [node name="ModeSelector" parent="HUD" unique_id=1872852485 instance=ExtResource("7_272bh")]
 mouse_force_pass_scroll_events = false
 
-[node name="调试工具" type="Node" parent="." unique_id=1612407275 node_paths=PackedStringArray("ModeSelector")]
+[node name="调试工具" type="Node" parent="." unique_id=1612407275 node_paths=PackedStringArray("ModeSelector", "player")]
 script = ExtResource("6_7mycd")
 ModeSelector = NodePath("../HUD/ModeSelector")
+player = NodePath("../Player")

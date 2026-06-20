@@ -98,6 +98,11 @@ func has_item(item_id: String, amount: float = 1.0) -> bool:
 # 9. 公开方法 — 存取
 # ============================================================
 
+## 向仓库添加物品。[br]
+## 封装 [method _deposit_item]，供外部系统（如 [PropManager]）安全调用。
+func add_item(item_id: String, amount: float) -> void:
+	_deposit_item(item_id, amount)
+
 ## 从仓库中移除指定数量的物品。[br]
 ## 返回 [code]true[/code] 表示移除成功，[code]false[/code] 表示数量不足。
 func remove_item(item_id: String, amount: float) -> bool:
@@ -276,6 +281,8 @@ func _resolve_category_to_partition(category: String) -> String:
 		"seed":
 			return "items"
 		"material":
+			return "items"
+		"currency":
 			return "items"
 		"consumable":
 			return "pending_1"

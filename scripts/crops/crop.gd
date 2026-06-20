@@ -275,12 +275,13 @@ func _is_mature() -> bool:
 func _get_grid_position() -> Vector2i:
 	if tile == null:
 		return Vector2i(-1, -1)
-	var tile_name: String = tile.name
-	if tile_name.begins_with("tile_"):
-		var parts: PackedStringArray = tile_name.split("_")
-		if parts.size() >= 3:
-			return Vector2i(int(parts[1]), int(parts[2]))
-	return Vector2i(-1, -1)
+	return tile.get_grid_position()
+	# var tile_name: String = tile.name
+	# if tile_name.begins_with("tile_"):
+	# 	var parts: PackedStringArray = tile_name.split("_")
+	# 	if parts.size() >= 3:
+	# 		return Vector2i(int(parts[1]), int(parts[2]))
+	# return Vector2i(-1, -1)
 
 # ============================================================
 # 10. 私有方法 — 收获计算
