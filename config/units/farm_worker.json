@@ -5,7 +5,7 @@
   "move_speed": 12.0,
   "work_speed": 1.0,
   "tool_level": 1,
-  "max_tasks": 1000,
+  "max_tasks": 2,
   "carry_capacity": 5,
   "plant_ticks": 10,
   "harvest_ticks": 10,

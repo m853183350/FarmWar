@@ -36,6 +36,18 @@ func _ready() -> void:
 	UnitManager.spawn_worker(Vector2i(5, 3))
 	UnitManager.spawn_worker(Vector2i(5, 4))
 	UnitManager.spawn_worker(Vector2i(5, 5))
+	
+	# UnitManager.spawn_worker(Vector2i(5, 3))
+	# UnitManager.spawn_worker(Vector2i(5, 4))
+	# UnitManager.spawn_worker(Vector2i(5, 5))
+	
+	# UnitManager.spawn_worker(Vector2i(5, 3))
+	# UnitManager.spawn_worker(Vector2i(5, 4))
+	# UnitManager.spawn_worker(Vector2i(5, 5))
+	
+	# UnitManager.spawn_worker(Vector2i(5, 3))
+	# UnitManager.spawn_worker(Vector2i(5, 4))
+	# UnitManager.spawn_worker(Vector2i(5, 5))
 	# 启动时加本科选项
 	ModeSelector.add_mode_for_family("Poaceae")
 	EventBus.mode_changed.connect(_show_mode_change)
