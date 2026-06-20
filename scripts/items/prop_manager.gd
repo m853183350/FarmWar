@@ -8,10 +8,13 @@
 ##   - 事件触发：通过 EventBus 信号驱动效果执行
 ##   - 动态绑定：仅连接已持有道具所需的信号，节省开销
 ##   - 堆叠机制：max_stack 控制持有上限，持有多个时效果叠加
+##   - 效果分离：效果逻辑在 [code]scripts/items/effects/[/code] 中独立实现
 class_name PropManager extends Node
 
 const JsonConfigLoader = preload("res://scripts/utils/json_loader.gd")
 const PropDataClass = preload("res://scripts/items/prop_data.gd")
+const PropEffectBaseClass = preload("res://scripts/items/effects/prop_effect_base.gd")
+const AddStorageItemEffectClass = preload("res://scripts/items/effects/add_storage_item_effect.gd")
 
 # ============================================================
 # 1. 信号
@@ -51,6 +54,14 @@ var prop_library: Dictionary = {}
 # 6. 私有变量
 # ============================================================
 
+## 仓库引用，在 [method _ready] 中从 Player 父节点获取并缓存。[br]
+## 一场游戏中 Storage 位置不会变化，缓存避免每次效果执行时重复查找。
+var _storage: Storage = null
+
+## 效果实例缓存。[br]
+## 结构：[code]{ effect_type: PropEffectBase }[/code]
+var _effects: Dictionary = {}
+
 ## 信号绑定追踪。[br]
 ## 结构：[code]{ signal_name: Array[String] }[/code] — 每个信号关联的道具 ID 列表。
 var _signal_bindings: Dictionary = {}
@@ -64,9 +75,11 @@ var _connected_signals: Dictionary = {}
 # ============================================================
 
 func _ready() -> void:
+	_cache_storage()
+	_init_effects()
 	_load_prop_library()
 	_register_debug_info()
-	print("PropManager: 初始化完成，已加载 %d 个道具定义" % prop_library.size())
+	print("PropManager: 初始化完成，已加载 %d 个道具定义，%d 个效果类型" % [prop_library.size(), _effects.size()])
 
 func _exit_tree() -> void:
 	_disconnect_all_signals()
@@ -93,7 +106,7 @@ func add_prop(prop_id: String) -> bool:
 
 	# 检查堆叠上限
 	if max_stack > 0 and current_count >= max_stack:
-		push_warning("PropManager: 道具 '%s' 已达堆叠上限 %d" % [prop_id, max_stack])
+		push_warning("PropManager: 道具 '%s' 已达堆叠上限 %d" % [prop_id, max_stack]) #TODO:道具上限后的处理
 		return false
 
 	# 增加计数
@@ -166,6 +179,27 @@ func get_all_props() -> Array:
 # ============================================================
 # 10. 私有方法 — 初始化
 # ============================================================
+
+## 缓存 Storage 引用。[br]
+## PropManager 由 Player 创建，Storage 是 Player 的直接子节点，[br]
+## 一场游戏中 Storage 位置不变，初始化时缓存一次即可。
+func _cache_storage() -> void:
+	var player: Node = get_parent()
+	if player == null:
+		push_error("PropManager: 获取父节点失败，无法缓存 Storage 引用")
+		return
+
+	_storage = player.get_node_or_null("Storage") as Storage
+	if _storage == null:
+		push_error("PropManager: 未找到 Storage 子节点")
+
+## 初始化效果实例。[br]
+## 将效果类型标识映射到对应的效果实例对象。[br]
+## 新增效果只需在此方法中添加一行注册代码，无需修改其他逻辑。
+func _init_effects() -> void:
+	var add_item_effect: RefCounted = AddStorageItemEffectClass.new()
+	add_item_effect.init(_storage)
+	_effects[&"add_storage_item"] = add_item_effect
 
 ## 从 [constant PROP_CONFIG_DIR] 加载所有道具 JSON 定义文件。
 func _load_prop_library() -> void:
@@ -296,12 +330,16 @@ func _get_signal_handler(signal_name: StringName) -> Callable:
 # 10. 私有方法 — 信号处理
 # ============================================================
 
-## 响应 [signal EventBus.crop_matured] 信号。
-func _on_crop_matured(_crop_node: Node2D, _grid_pos: Vector2i, _crop_id: String) -> void:
+## 响应 [signal EventBus.crop_matured] 信号。[br]
+## 作物进入成熟阶段（可收获）时调用。[br]
+## 注意：成熟不等同于收获，本信号在收获之前发出。
+func _on_crop_matured(crop_node: Node2D, grid_pos: Vector2i, crop_id: String) -> void:
+	print("PropManager: 收到 crop_matured — crop=%s, pos=(%d,%d)" % [crop_id, grid_pos.x, grid_pos.y])
 	_process_trigger(TRIGGER_CROP_MATURED)
 
 ## 响应 [signal EventBus.crop_harvested] 信号。
-func _on_crop_harvested(_yields: Array, _crop_id: String) -> void:
+func _on_crop_harvested(yields: Array, crop_id: String) -> void:
+	print("PropManager: 收到 crop_harvested — crop=%s, yields=%d" % [crop_id, yields.size()])
 	_process_trigger(TRIGGER_CROP_HARVESTED)
 
 ## 响应 [signal EventBus.crop_stage_changed] 信号。
@@ -324,6 +362,9 @@ func _process_trigger(signal_name: StringName) -> void:
 		if data == null:
 			continue
 
+		var prop_name: String = data.get("prop_name") as String
+		print("PropManager: 触发道具 '%s'（信号: %s, 持有: %d）" % [prop_name, signal_name, count])
+
 		# 持有 n 个道具，效果执行 n 次
 		for _i: int in range(count):
 			_execute_effect(data)
@@ -332,47 +373,17 @@ func _process_trigger(signal_name: StringName) -> void:
 # 10. 私有方法 — 效果执行
 # ============================================================
 
-## 根据效果类型分发执行道具效果。
+## 根据效果类型分发到对应的效果实例。[br]
+## 效果实例在 [method _init_effects] 中注册，新增效果无需修改本方法。
 func _execute_effect(data: RefCounted) -> void:
 	var effect_type: StringName = data.get("effect_type") as StringName
-	match effect_type:
-		&"add_storage_item":
-			_effect_add_storage_item(data.get("effect_params") as Dictionary)
-		_:
-			push_warning("PropManager: 未知效果类型 '%s'（道具: %s）" % [effect_type, data.get("prop_id")])
-
-## 效果：向 [Storage] 添加物品。[br]
-## 参数：[code]{ item_id: String, amount: float }[/code]
-func _effect_add_storage_item(params: Dictionary) -> void:
-	var item_id: String = params.get("item_id", "") as String
-	if item_id.is_empty():
-		push_error("PropManager: add_storage_item 效果缺少 item_id 参数")
+	var effect: RefCounted = _effects.get(effect_type, null) as PropEffectBase
+	if effect == null:
+		push_warning("PropManager: 未注册的效果类型 '%s'（道具: %s）" % [effect_type, data.get("prop_id")])
 		return
 
-	var amount: float = params.get("amount", 0.0) as float
-	if amount <= 0.0:
-		return
-
-	var storage: Storage = _get_storage()
-	if storage == null:
-		push_error("PropManager: 无法获取 Storage 节点，效果执行失败")
-		return
-
-	storage.add_item(item_id, amount)
-
-# ============================================================
-# 10. 私有方法 — 辅助
-# ============================================================
-
-## 查找并返回 [Storage] 节点引用。[br]
-## 通过 player group 查找 Player 节点，再获取其 Storage 子节点。
-func _get_storage() -> Storage:
-	var players: Array[Node] = get_tree().get_nodes_in_group("player")
-	if players.size() == 0:
-		return null
-
-	var player: Node = players[0]
-	return player.get_node("Storage") as Storage
+	var params: Dictionary = data.get("effect_params") as Dictionary
+	effect.execute(params)
 
 # ============================================================
 # 10. 私有方法 — 调试
@@ -405,5 +416,13 @@ func _update_debug_info() -> void:
 		for signal_name: StringName in _signal_bindings:
 			var bindings: Array = _signal_bindings[signal_name] as Array
 			debug_str += "  %s: %s\n" % [signal_name, str(bindings)]
+
+	# Effects info
+	debug_str += "\nEffects:\n"
+	for effect_type: StringName in _effects:
+		debug_str += "  %s: OK\n" % effect_type
+
+	# Storage status
+	debug_str += "\nStorage: %s\n" % ("OK" if _storage != null else "NULL")
 
 	DebugOverlay.set_entry("PropManager", debug_str)
