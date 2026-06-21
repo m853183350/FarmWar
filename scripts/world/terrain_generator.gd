@@ -120,6 +120,9 @@ func generate() -> void:
 
 	print("TerrainGenerator: 生成了 %d 个地块 (%dx%d, mode=%d)" % [get_child_count(), map_width, map_height, generation_mode])
 
+	# 地形生成完成后，全量更新所有地块的属性（温度、湿度、肥力）和标签
+	update_all_tiles_properties()
+
 	if notify_on_complete and EventBus:
 		EventBus.terrain_generated.emit()
 
@@ -130,6 +133,55 @@ func get_tile_data_at(grid_x: int, grid_y: int) -> Resource:
 	if node:
 		return node.get_meta("tile_data", null)
 	return null
+
+## 全量更新所有地块的属性（温度、湿度、肥力）和标签。
+##
+## 流程：
+##   1. 遍历所有子节点（地块），先统一更新标签
+##   2. 再遍历所有地块，重新计算温度 / 湿度 / 肥力
+##
+## 应在以下时机调用：
+##   - 地形生成完成后（[method generate] 自动调用）
+##   - 外部需要全量刷新时（如加载存档后）
+func update_all_tiles_properties() -> void:
+	# 第一步：更新所有地块的标签
+	for child: Node in get_children():
+		if child is BaseTile:
+			(child as BaseTile).update_tags()
+
+	# 第二步：更新所有地块的温度、湿度、肥力
+	for child: Node in get_children():
+		if child is BaseTile:
+			(child as BaseTile).update_properties()
+
+	print("TerrainGenerator: 已完成全量地块属性更新")
+
+## 响应地块变化，若变化涉及带有特定标签的地块，传播更新周围地块属性。
+##
+## 变化前和变化后都应检查是否有标签需要传播。
+## [param old_tile_data] 变化前的地块数据（可能为 [code]null[/code]）。
+## [param new_tile_data] 变化后的地块数据。
+## [param grid_pos] 地块网格坐标。
+func propagate_tile_tag_change(old_tile_data: Resource, new_tile_data: Resource, grid_pos: Vector2i) -> void:
+	var old_tags: Array[String] = []
+	var new_tags: Array[String] = []
+
+	if old_tile_data:
+		old_tags = old_tile_data.tags
+	if new_tile_data:
+		new_tags = new_tile_data.tags
+
+	# 收集需要传播的标签（变化前后涉及的所有标签）
+	var affected_tags: Array[String] = []
+	for tag: String in old_tags:
+		if tag not in affected_tags:
+			affected_tags.append(tag)
+	for tag: String in new_tags:
+		if tag not in affected_tags:
+			affected_tags.append(tag)
+
+	for tag: String in affected_tags:
+		BaseTile.propagate_tag_update(tag, grid_pos, self)
 
 # ============================================================
 # 10. 私有方法 — 配置加载

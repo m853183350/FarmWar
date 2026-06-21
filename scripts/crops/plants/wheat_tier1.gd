@@ -67,6 +67,16 @@ func _get_harvest_yields() -> Array:
 	return yields
 
 # ============================================================
+# 11. 虚方法覆写 — 土壤需求
+# ============================================================
+
+func _get_soil_requirements() -> Dictionary:
+	var reqs: Dictionary = _config_cache.get("soil_requirements", {})
+	if reqs.is_empty():
+		push_error("WheatTier1: JSON 配置中缺少 soil_requirements 对象")
+	return reqs
+
+# ============================================================
 # 10. 私有方法 — JSON 加载
 # ============================================================
 

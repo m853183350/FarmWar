@@ -27,6 +27,7 @@ PathfindingManager="*res://scripts/autoload/pathfinding_manager.gd"
 DebugOverlay="*res://scripts/ui/debug_overlay.gd"
 DebugOverlayLeft="*res://scripts/ui/debug_overlay_left.gd"
 DebugUI="*res://scripts/ui/debug_ui.gd"
+TileInfoPanel="*res://scripts/ui/tile_info_panel.gd"
 
 [display]
 
