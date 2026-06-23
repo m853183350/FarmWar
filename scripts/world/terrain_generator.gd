@@ -3,10 +3,14 @@
 ## 挂载在 [code]world[/code] 节点上，在 [method _ready] 时自动生成地图网格。
 ## 支持多种生成模式，地形配置从外部 JSON 文件加载。
 ##
+## 地块创建支持两种模式：
+##   - [b]TSCN 模式[/b]：配置中指定了 [code]scene[/code] 的变种，直接实例化 PackedScene。
+##   - [b]程序化模式[/b]：没有 TSCN 的变种，动态创建 Sprite2D 节点并附加纹理和脚本。
+##
 ## 使用方式：
 ##   1. 将本脚本挂载到 world 场景的根节点
 ##   2. 在编辑器中调整 map_width / map_height / seed / generation_mode 等参数
-##   3. 编辑 [code]resources/world/terrain_config.json[/code] 配置地块类型与权重
+##   3. 编辑 [code]config/terrain_config.json[/code] 配置地块类型、属性与变种
 ##   4. 运行游戏即可看到生成的地形
 class_name TerrainGenerator extends Node2D
 
@@ -74,8 +78,18 @@ const FALLBACK_SCENE_PATH: String = "res://scenes/debug/null_img.tscn"
 
 var _rng: RandomNumberGenerator = null
 
+## 纹理资源目录根路径（从配置文件读取）。
+var _texture_dir: String = "res://assets/sprites/tiles/"
+
+## 占位/降级纹理（从配置文件读取）。
+var _null_texture: Texture2D = null
+
+## 脚本资源目录根路径（从配置文件读取）。
+var _script_dir: String = "res://scripts/world/tiles/"
+
 ## 从配置文件加载的地形配置缓存。[br]
-## 结构：{ "dirt": { "scene": PackedScene, "weight": 0.45 }, ... }
+## 结构：[code]{ "dirt": { "weight": 0.60, "tile_type": 0, "defaults": {...},
+## "variants": { "soil": { "scene": PackedScene, ... }, ... } }, ... }[/code]
 var _tile_configs: Dictionary = {}
 
 # ============================================================
@@ -134,6 +148,47 @@ func get_tile_data_at(grid_x: int, grid_y: int) -> Resource:
 		return node.get_meta("tile_data", null)
 	return null
 
+## 获取已加载的地形配置缓存。
+## 供 [TileActions] 等外部系统查询地块类型配置（用于转化目标查找等）。
+func get_tile_configs() -> Dictionary:
+	return _tile_configs
+
+## 根据地块类型键名（如 "dirt"、"stone"）获取配置。
+func get_tile_config_for_type(type_key: String) -> Dictionary:
+	return _tile_configs.get(type_key, {})
+
+## 合并类型默认值与变种覆盖值，返回可用于 [method TileInfo.apply_defaults] 的配置字典。
+func merge_tile_config(type_cfg: Dictionary, variant_cfg: Dictionary) -> Dictionary:
+	return _merge_tile_config(type_cfg, variant_cfg)
+
+## 程序化创建地块节点（无 TSCN 场景时使用）。
+##
+## 根据配置中的纹理和脚本路径创建 [Sprite2D] 节点，
+## 并设置 [member BaseTile.tile_type]、[member BaseTile.variant]、
+## [member BaseTile.display_name] 等标识属性。
+##
+## [param type_cfg] 类型级配置字典（含 tile_type、defaults 等）。
+## [param variant_cfg] 变种级配置字典（含 name、texture、script 等）。
+## [param variant_key] 变种键名（如 "grassland"、"gravel" 等）。
+##
+## 返回配置好的 [Node2D] 节点，纹理缺失时使用 null_img 降级。
+func create_tile_programmatically(type_cfg: Dictionary, variant_cfg: Dictionary, variant_key: String) -> Node2D:
+	return _create_tile_programmatically(type_cfg, variant_cfg, variant_key)
+
+## 根据类型键和变种键创建地块实例。
+## 优先使用 TSCN 模式，无场景时回退到程序化创建。
+func create_tile_instance(type_key: String, variant_key: String) -> Node2D:
+	var type_cfg: Dictionary = _tile_configs.get(type_key, {})
+	if type_cfg.is_empty():
+		push_error("TerrainGenerator: 未知的地块类型 '%s'" % type_key)
+		return _create_fallback_tile()
+	var variants: Dictionary = type_cfg.get("variants", {})
+	var variant_cfg: Dictionary = variants.get(variant_key, {})
+	if variant_cfg.is_empty():
+		push_warning("TerrainGenerator: 类型 '%s' 中不存在变种 '%s'" % [type_key, variant_key])
+		return _create_fallback_tile()
+	return _create_tile_instance(type_cfg, variant_cfg, variant_key)
+
 ## 全量更新所有地块的属性（温度、湿度、肥力）和标签。
 ##
 ## 流程：
@@ -188,6 +243,7 @@ func propagate_tile_tag_change(old_tile_data: Resource, new_tile_data: Resource,
 # ============================================================
 
 ## 从 JSON 配置文件加载地形配置，存入 [member _tile_configs]。
+## 同时预加载场景、纹理和脚本资源。
 func _load_config() -> void:
 	_tile_configs.clear()
 
@@ -215,100 +271,164 @@ func _load_config() -> void:
 		return
 
 	var raw: Dictionary = data as Dictionary
-	for key: String in raw:
-		var entry = raw[key]
+
+	# 读取全局路径配置
+	_texture_dir = raw.get("texture_dir", "res://assets/sprites/tiles/")
+	_script_dir = raw.get("script_dir", "res://scripts/world/tiles/")
+	var null_tex_path: String = raw.get("null_texture", "res://assets/sprites/null_img.png")
+	_null_texture = _safe_load_texture(null_tex_path)
+
+	# 验证 null_texture 加载成功
+	if _null_texture == null:
+		push_error("TerrainGenerator: 降级纹理不可用 '%s'，程序化地块将无纹理" % null_tex_path)
+
+	# 解析各地块类型配置
+	var tiles_raw = raw.get("tiles", {})
+	if not tiles_raw is Dictionary:
+		push_error("TerrainGenerator: 配置文件中缺少 'tiles' 字段或格式错误")
+		return
+
+	var tiles_dict: Dictionary = tiles_raw as Dictionary
+	for type_key: String in tiles_dict:
+		var entry = tiles_dict[type_key]
 		if not entry is Dictionary:
-			push_warning("TerrainGenerator: 跳过配置项 '%s'（值不是 JSON 对象）" % key)
+			push_warning("TerrainGenerator: 跳过配置项 '%s'（值不是 JSON 对象）" % type_key)
 			continue
 
 		var entry_dict: Dictionary = entry as Dictionary
-		if not entry_dict.has("scene") or not entry_dict.has("weight"):
-			push_warning("TerrainGenerator: 跳过配置项 '%s'（缺少 scene 或 weight 字段）" % key)
-			continue
-
-		var scene_path: String = entry_dict["scene"]
-		if not ResourceLoader.exists(scene_path):
-			push_error("TerrainGenerator: 地块场景不存在 '%s'，降级为占位场景" % scene_path)
-			scene_path = FALLBACK_SCENE_PATH
-
-		var scene: PackedScene = _safe_load_scene(scene_path)
-		_tile_configs[key] = {
-			"scene": scene,
-			"weight": float(entry_dict["weight"]),
+		var type_cfg := {
+			"weight": float(entry_dict.get("weight", 0.0)),
+			"name": entry_dict.get("name", ""),
+			"tile_type": int(entry_dict.get("tile_type", 0)),
+			"default_variant": entry_dict.get("default_variant", ""),
+			"tags": entry_dict.get("tags", []),
+			"defaults": entry_dict.get("defaults", {}),
+			"variants": {},
+			"gather_actions": entry_dict.get("gather_actions", []),
 		}
 
-## 安全加载场景 — 成功返回 PackedScene，失败则降级为占位场景。
+		# 解析变种：预加载 scene / texture / script
+		var variants_raw = entry_dict.get("variants", {})
+		if not variants_raw is Dictionary:
+			push_warning("TerrainGenerator: 类型 '%s' 的 variants 不是 JSON 对象，跳过" % type_key)
+			type_cfg["variants"] = {}
+		else:
+			var variants_dict: Dictionary = variants_raw as Dictionary
+			for var_key: String in variants_dict:
+				var var_entry = variants_dict[var_key]
+				if not var_entry is Dictionary:
+					continue
+
+				var var_dict: Dictionary = var_entry as Dictionary
+				var var_cfg := {
+					"name": var_dict.get("name", ""),
+				}
+
+				# 拷贝数值属性（变种级覆盖）
+				for prop in ["moisture_base_rate", "fertility_base", "hardness", "depth",
+						"fishable", "farmland", "resource_type"]:
+					if var_dict.has(prop):
+						var_cfg[prop] = var_dict[prop]
+
+				# 加载场景（TSCN 模式）
+				if var_dict.has("scene") and not str(var_dict["scene"]).is_empty():
+					var scene_path: String = var_dict["scene"]
+					var scene: PackedScene = _safe_load_scene(scene_path)
+					if scene:
+						var_cfg["scene"] = scene
+					else:
+						push_warning("TerrainGenerator: 变种 '%s.%s' 的场景加载失败，回退到程序化创建" % [type_key, var_key])
+
+				# 加载纹理（程序化模式）
+				if var_dict.has("texture") and not str(var_dict["texture"]).is_empty():
+					var tex_path: String = _texture_dir + var_dict["texture"]
+					var tex: Texture2D = _safe_load_texture(tex_path)
+					if tex:
+						var_cfg["texture"] = tex
+
+				# 加载脚本（程序化模式）
+				if var_dict.has("script") and not str(var_dict["script"]).is_empty():
+					var script_path: String = _script_dir + var_dict["script"]
+					if ResourceLoader.exists(script_path):
+						var scr: Script = load(script_path) as Script
+						if scr:
+							var_cfg["script"] = scr
+						else:
+							push_error("TerrainGenerator: 脚本加载失败 '%s'" % script_path)
+					else:
+						push_error("TerrainGenerator: 脚本路径不存在 '%s'" % script_path)
+
+				type_cfg["variants"][var_key] = var_cfg
+
+		_tile_configs[type_key] = type_cfg
+
+## 安全加载场景 — 成功返回 PackedScene，失败返回 null。
 func _safe_load_scene(path: String) -> PackedScene:
 	if ResourceLoader.exists(path):
-		var loaded: PackedScene = load(path)
+		var loaded: PackedScene = load(path) as PackedScene
 		if loaded != null:
 			return loaded
-		push_error("TerrainGenerator: 场景加载失败 '%s'，降级为占位场景" % path)
+		push_error("TerrainGenerator: 场景加载失败 '%s'" % path)
 	else:
-		push_error("TerrainGenerator: 场景路径不存在 '%s'，降级为占位场景" % path)
-
-	if ResourceLoader.exists(FALLBACK_SCENE_PATH):
-		var fallback: PackedScene = load(FALLBACK_SCENE_PATH)
-		if fallback != null:
-			return fallback
-
-	push_error("TerrainGenerator: 占位场景也不可用 '%s'" % FALLBACK_SCENE_PATH)
+		push_error("TerrainGenerator: 场景路径不存在 '%s'" % path)
 	return null
 
-## 根据配置键名获取对应的 TileType 枚举值。
-func _key_to_tile_type(key: String) -> int:
-	match key:
-		"dirt":
-			return TileInfoRef.TileType.DIRT
-		"stone":
-			return TileInfoRef.TileType.STONE
-		"ocean":
-			return TileInfoRef.TileType.OCEAN
-		"farmland":
-			return TileInfoRef.TileType.FARMLAND
-		_:
-			push_warning("TerrainGenerator: 未知的地块类型键 '%s'，fallback 为 DIRT" % key)
-			return TileInfoRef.TileType.DIRT
+## 安全加载纹理 — 成功返回 Texture2D，失败返回 null。
+func _safe_load_texture(path: String) -> Texture2D:
+	if ResourceLoader.exists(path):
+		var loaded: Texture2D = load(path) as Texture2D
+		if loaded != null:
+			return loaded
+		push_error("TerrainGenerator: 纹理加载失败 '%s'" % path)
+	else:
+		push_error("TerrainGenerator: 纹理路径不存在 '%s'" % path)
+	return null
 
-## 根据配置键名获取默认变种名称。
-func _key_to_variant(key: String) -> String:
-	match key:
-		"dirt":
-			return "soil"
-		"stone":
-			return "hard_stone"
-		"ocean":
-			return "deep"
-		"farmland":
-			return "soil_farmland"
-		_:
-			return ""
+## 合并类型默认值与变种覆盖值，返回可用于 [method TileInfo.apply_defaults] 的配置字典。
+func _merge_tile_config(type_cfg: Dictionary, variant_cfg: Dictionary) -> Dictionary:
+	var merged: Dictionary = {}
+
+	# 复制类型级默认值
+	var defaults: Dictionary = type_cfg.get("defaults", {})
+	for key in defaults:
+		merged[key] = defaults[key]
+
+	# 设置标签（类型级）
+	merged["tags"] = type_cfg.get("tags", [])
+
+	# 用变种级属性覆盖
+	for key in variant_cfg:
+		if key not in ["name", "scene", "texture", "script"]:
+			merged[key] = variant_cfg[key]
+
+	# 变种名
+	merged["variant_name"] = variant_cfg.get("name", "")
+
+	return merged
 
 # ============================================================
 # 10. 私有方法 — 地形生成算法
 # ============================================================
 
 ## 全随机生成模式。
-## 遍历所有网格位置，按配置中的权重随机选取地块类型并实例化。
+## 遍历所有网格位置，按配置中的权重随机选取地块类型，再选取默认变种。
+## 有 TSCN 的变种直接实例化场景，没有的则程序化创建 Sprite2D。
 func _generate_all_random() -> void:
 	if _tile_configs.is_empty():
 		push_warning("TerrainGenerator: 没有可用的地形配置，全部使用占位场景")
 		_generate_fallback_grid()
 		return
 
-	# 构建加权选择列表
-	var entries: Array[Dictionary] = []
+	# 构建加权类型选择列表
+	var types: Array[Dictionary] = []
 	var total_weight: float = 0.0
 	for key: String in _tile_configs:
 		var cfg: Dictionary = _tile_configs[key]
-		var entry := {
-			"key": key,
-			"type": _key_to_tile_type(key),
-			"scene": cfg["scene"],
-			"weight": cfg["weight"],
-		}
-		entries.append(entry)
-		total_weight += cfg["weight"]
+		var w: float = cfg.get("weight", 0.0)
+		if w <= 0.0:
+			continue
+		types.append({"key": key, "weight": w})
+		total_weight += w
 
 	if total_weight <= 0.0:
 		push_error("TerrainGenerator: 权重之和必须大于 0")
@@ -316,9 +436,20 @@ func _generate_all_random() -> void:
 
 	for x: int in range(map_width):
 		for y: int in range(map_height):
-			var entry: Dictionary = _pick_weighted(entries, total_weight)
-			var scene: PackedScene = entry["scene"] as PackedScene
-			var instance: Node2D = scene.instantiate()
+			var type_key: String = _pick_weighted_key(types, total_weight)
+			var type_cfg: Dictionary = _tile_configs[type_key]
+			var variant_key: String = type_cfg.get("default_variant", "")
+			var variants: Dictionary = type_cfg.get("variants", {})
+			var variant_cfg: Dictionary = variants.get(variant_key, {})
+
+			if variant_cfg.is_empty():
+				push_warning("TerrainGenerator: 类型 '%s' 缺少默认变种 '%s'" % [type_key, variant_key])
+				continue
+
+			# 创建地块实例
+			var instance: Node2D = _create_tile_instance(type_cfg, variant_cfg, variant_key)
+			if instance == null:
+				continue
 
 			# 定位
 			instance.position = Vector2(x * tile_size, y * tile_size)
@@ -326,9 +457,10 @@ func _generate_all_random() -> void:
 			# 命名便于调试
 			instance.name = "tile_%d_%d" % [x, y]
 
-			# 附加 TileData（含变种信息）
-			var variant: String = _key_to_variant(entry["key"])
-			var data: Resource = _create_tile_data(x, y, entry["type"], variant)
+			# 附加 TileInfo
+			var merged_config: Dictionary = _merge_tile_config(type_cfg, variant_cfg)
+			var tile_type: int = type_cfg.get("tile_type", 0)
+			var data: Resource = _create_tile_data(x, y, tile_type, variant_key, merged_config)
 			if instance is BaseTile:
 				(instance as BaseTile).set_tile_data(data)
 			else:
@@ -344,14 +476,9 @@ func _generate_island() -> void:
 
 ## 全部使用占位场景铺满网格。
 func _generate_fallback_grid() -> void:
-	var fallback_scene: PackedScene = _safe_load_scene(FALLBACK_SCENE_PATH)
-	if fallback_scene == null:
-		push_error("TerrainGenerator: 占位场景不可用，无法生成任何地块")
-		return
-
 	for x: int in range(map_width):
 		for y: int in range(map_height):
-			var instance: Node2D = fallback_scene.instantiate()
+			var instance: Node2D = _create_fallback_tile()
 			instance.position = Vector2(x * tile_size, y * tile_size)
 			instance.name = "tile_%d_%d" % [x, y]
 
@@ -363,15 +490,77 @@ func _generate_fallback_grid() -> void:
 
 			add_child(instance)
 
-## 按权重随机选取一个配置条目。
-func _pick_weighted(entries: Array[Dictionary], total_weight: float) -> Dictionary:
+## 创建一个降级占位地块节点。
+## 优先使用 FALLBACK_SCENE_PATH，不可用时程序化创建使用 null_texture。
+func _create_fallback_tile() -> Node2D:
+	# 尝试加载占位场景
+	if ResourceLoader.exists(FALLBACK_SCENE_PATH):
+		var scene: PackedScene = load(FALLBACK_SCENE_PATH) as PackedScene
+		if scene:
+			return scene.instantiate()
+
+	# 场景不可用，程序化创建
+	var node := Sprite2D.new()
+	node.texture_filter = 1
+	node.scale = Vector2(8, 8)
+	node.centered = false
+	if _null_texture:
+		node.texture = _null_texture
+	return node
+
+## 按权重随机选取一个类型键名。
+func _pick_weighted_key(entries: Array[Dictionary], total_weight: float) -> String:
 	var roll: float = _rng.randf() * total_weight
 	var cumulative: float = 0.0
 	for entry: Dictionary in entries:
 		cumulative += entry["weight"]
 		if roll < cumulative:
-			return entry
-	return entries[0]
+			return entry["key"]
+	return entries[0]["key"]
+
+# ============================================================
+# 10. 私有方法 — 地块实例创建
+# ============================================================
+
+## 根据配置创建地块实例。
+## 优先 TSCN 模式（variant_cfg 含 scene），否则程序化创建。
+func _create_tile_instance(type_cfg: Dictionary, variant_cfg: Dictionary, variant_key: String) -> Node2D:
+	# TSCN 模式
+	if variant_cfg.has("scene") and variant_cfg["scene"] != null:
+		var scene: PackedScene = variant_cfg["scene"] as PackedScene
+		if scene:
+			return scene.instantiate()
+
+	# 程序化模式
+	return _create_tile_programmatically(type_cfg, variant_cfg, variant_key)
+
+## 程序化创建地块节点。
+##
+## 创建 [Sprite2D] 节点，从配置读取纹理（无则用 null_texture），
+## 附加脚本并设置 tile_type / variant / display_name。
+func _create_tile_programmatically(type_cfg: Dictionary, variant_cfg: Dictionary, variant_key: String) -> Node2D:
+	var node := Sprite2D.new()
+	node.texture_filter = 1
+	node.scale = Vector2(8, 8)
+	node.centered = false
+
+	# 设置纹理（配置指定 → 降级纹理）
+	var texture: Texture2D = variant_cfg.get("texture", null) as Texture2D
+	if texture == null:
+		texture = _null_texture
+	if texture:
+		node.texture = texture
+
+	# 设置脚本
+	if variant_cfg.has("script") and variant_cfg["script"] != null:
+		var scr: Script = variant_cfg["script"] as Script
+		node.set_script(scr)
+		# 在 _ready() 之前设置标识属性，子类 _ready() 将不再覆盖
+		node.set("tile_type", type_cfg.get("tile_type", -1))
+		node.set("variant", variant_key)
+		node.set("display_name", variant_cfg.get("name", ""))
+
+	return node
 
 # ============================================================
 # 10. 私有方法 — 工具
@@ -389,14 +578,14 @@ func _init_rng() -> void:
 		_rng.randomize()
 
 ## 创建地块数据资源。[br]
-## [param variant] 用于设置变种名称（如 "soil"、"hard_stone"、"deep"），
-## [TileInfo.apply_defaults] 会根据 [member TileInfo.tile_type] + [member TileInfo.variant] 设置完整默认值。
-func _create_tile_data(x: int, y: int, tile_type: int, variant: String = "") -> Resource:
+## [param config] 由 [method _merge_tile_config] 合并后的配置字典，传入 [method TileInfo.apply_defaults]。
+func _create_tile_data(x: int, y: int, tile_type: int, variant: String = "", config: Dictionary = {}) -> Resource:
 	var data: Resource = TileInfoRef.new()
 	data.grid_position = Vector2i(x, y)
 	data.tile_type = tile_type
 	data.variant = variant
-	data.apply_defaults()
+	if not config.is_empty():
+		data.apply_defaults(config)
 	return data
 
 func _find_tile_node(grid_x: int, grid_y: int) -> Node:

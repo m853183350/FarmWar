@@ -1,6 +1,7 @@
 ## 地块数据资源。
 ## 描述单个地块的类型、通行性和可建造性等属性。
-## 由 [TerrainGenerator] 在生成地形时为每个地块实例赋值。
+## 所有默认属性值从 [code]config/terrain_config.json[/code] 注入，
+## 由 [TerrainGenerator] 在创建地块实例时传入配置字典。
 class_name TileInfo extends Resource
 
 # ============================================================
@@ -68,7 +69,7 @@ var resource_type: int = 0
 ## 拥有特定标签的地块可能触发周围地块属性传播更新。
 var tags: Array[String] = []
 
-# -------- 基础值字段（由 apply_defaults 按地块类型/变种设置） --------
+# -------- 基础值字段（由 apply_defaults 按配置中的类型/变种设置） --------
 
 ## 湿度基础倍率（地块倍率）。根据地块类型/变种设置，用于湿度计算公式。
 var moisture_base_rate: float = 1.0
@@ -105,40 +106,63 @@ var temperature_modifier_2: float = 0.0
 # 9. 公开方法
 # ============================================================
 
-## 根据 [member tile_type] 和 [member variant] 设置默认属性。
-func apply_defaults() -> void:
-	match tile_type:
-		TileType.DIRT:
-			_apply_dirt_defaults()
-		TileType.STONE:
-			_apply_stone_defaults()
-		TileType.OCEAN:
-			_apply_ocean_defaults()
-		TileType.FARMLAND:
-			_apply_farmland_defaults()
+## 根据配置文件中的类型默认值和变种覆盖值设置地块属性。
+##
+## [param config] 由 [TerrainGenerator] 从 [code]terrain_config.json[/code]
+## 合并后的配置字典，应包含以下键：
+##   - passable, buildable, farmland, hardness, depth, fishable,
+##     resource_type, tags（类型级默认值）
+##   - moisture_base_rate, fertility_base, variant_name（变种级数据）
+##
+## 变种级字段会覆盖类型级同名字段。
+func apply_defaults(config: Dictionary) -> void:
+	# -------- 类型级默认属性 --------
+	passable = config.get("passable", true)
+	buildable = config.get("buildable", true)
+	farmland = config.get("farmland", false)
+	hardness = config.get("hardness", 1)
+	depth = config.get("depth", 0.0)
+	fishable = config.get("fishable", false)
+	resource_type = config.get("resource_type", 0)
+	# JSON 解析出的 Array 不是强类型，需逐元素转换再赋值给 Array[String]
+	var raw_tags: Array = config.get("tags", [])
+	tags.clear()
+	for t in raw_tags:
+		tags.append(t as String)
 
-## 根据当前 [member tile_type] 和 [member variant] 同步标签。
+	# -------- 变种级属性 --------
+	moisture_base_rate = config.get("moisture_base_rate", 1.0)
+	fertility_base = config.get("fertility_base", 0.0)
+	variant_name = config.get("variant_name", "")
+
+	# -------- 重置计算值（由 BaseTile.update_properties 填充） --------
+	moisture = 0.0
+	fertility = 0.0
+
+## 根据当前 [member tile_type] 同步标签。
+## 作为兜底方法，当 config 未提供 tags 时使用。
 ## 仅修改 [member tags]，不触及其他字段。
 func sync_tags() -> void:
 	match tile_type:
 		TileType.OCEAN:
 			tags = ["water_source"]
 		_:
-			tags = []
+			tags.clear()
 
 ## 返回人类可读的类型名称。
 func get_type_name() -> String:
-	match tile_type:
-		TileType.DIRT:
-			return "土质地面"
-		TileType.STONE:
-			return "石质地面"
-		TileType.OCEAN:
-			return "水域"
-		TileType.FARMLAND:
-			return "农田"
-		_:
-			return "未知"
+	return variant_name
+	# match tile_type:
+	# 	TileType.DIRT:
+	# 		return "土质地面"
+	# 	TileType.STONE:
+	# 		return "石质地面"
+	# 	TileType.OCEAN:
+	# 		return "水域"
+	# 	TileType.FARMLAND:
+	# 		return "农田"
+	# 	_:
+	# 		return "未知"
 
 ## 该地块是否可被耕作（转化为农田）。
 func can_be_plowed() -> bool:
@@ -147,125 +171,3 @@ func can_be_plowed() -> bool:
 ## 该地块是否可被挖掘（转化为普通土壤）。
 func can_be_dug() -> bool:
 	return tile_type == TileType.STONE
-
-# ============================================================
-# 10. 私有方法 — 类型默认值
-# ============================================================
-
-func _apply_dirt_defaults() -> void:
-	passable = true
-	buildable = true
-	farmland = false
-	hardness = 1
-	depth = 0.0
-	fishable = false
-	resource_type = 0
-	tags = []
-
-	match variant:
-		"grassland":
-			variant_name = "草地"
-			moisture_base_rate = 0.8
-			fertility_base = 0.8
-		"soil":
-			variant_name = "普通土壤"
-			moisture_base_rate = 0.8
-			fertility_base = 0.8
-		"sand":
-			variant_name = "沙地"
-			moisture_base_rate = 0.1
-			fertility_base = 0.2
-			farmland = true
-		"wetland":
-			variant_name = "湿地"
-			moisture_base_rate = 1.8
-			fertility_base = 1.0
-		_:
-			variant_name = "普通土壤"
-			moisture_base_rate = 0.8
-			fertility_base = 0.8
-	# 计算值将在 update_all_tiles_properties 中由 BaseTile 填充
-	moisture = 0.0
-	fertility = 0.0
-
-func _apply_stone_defaults() -> void:
-	passable = true
-	buildable = true
-	farmland = false
-	depth = 0.0
-	fishable = false
-	resource_type = 1  # STONE
-	tags = []
-
-	moisture_base_rate = 0.1
-	fertility_base = 0.0
-
-	match variant:
-		"gravel":
-			variant_name = "碎石地"
-			hardness = 2
-		"pebble":
-			variant_name = "卵石地"
-			hardness = 3
-		"hard_stone":
-			variant_name = "坚硬石质"
-			hardness = 5
-		_:
-			variant_name = "坚硬石质"
-			hardness = 5
-	moisture = 0.0
-	fertility = 0.0
-
-func _apply_ocean_defaults() -> void:
-	passable = false
-	buildable = false
-	farmland = false
-	fishable = true
-	resource_type = 5  # FISH
-
-	tags = ["water_source"]
-	moisture_base_rate = 10.0
-	fertility_base = 0.0
-
-	match variant:
-		"shallow":
-			variant_name = "浅水"
-			depth = 0.3
-		"deep":
-			variant_name = "深海"
-			depth = 1.0
-		"river":
-			variant_name = "河流"
-			depth = 0.5
-		_:
-			variant_name = "深海"
-			depth = 1.0
-	moisture = 0.0
-	fertility = 0.0
-
-func _apply_farmland_defaults() -> void:
-	passable = true
-	buildable = false
-	farmland = true
-	hardness = 1
-	depth = 0.0
-	fishable = false
-	resource_type = 0
-	tags = []
-
-	# fertility_base 和 moisture_base_rate 继承自转化源 DIRT，此处设默认值
-	match variant:
-		"soil_farmland":
-			variant_name = "土质农田"
-			moisture_base_rate = 0.8
-			fertility_base = 0.8
-		"silt_farmland":
-			variant_name = "淤泥农田"
-			moisture_base_rate = 1.8
-			fertility_base = 1.0
-		_:
-			variant_name = "土质农田"
-			moisture_base_rate = 0.8
-			fertility_base = 0.8
-	moisture = 0.0
-	fertility = 0.0

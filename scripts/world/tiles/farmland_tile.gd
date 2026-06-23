@@ -10,9 +10,12 @@ class_name FarmlandTile extends BaseTile
 # ============================================================
 
 func _ready() -> void:
-	tile_type = TileInfo.TileType.FARMLAND
-	variant = "soil_farmland"
-	display_name = "土质农田"
+	if tile_type == -1:
+		tile_type = TileInfo.TileType.FARMLAND
+	if variant.is_empty():
+		variant = "soil_farmland"
+	if display_name.is_empty():
+		display_name = "土质农田"
 	super._ready()
 
 # ============================================================

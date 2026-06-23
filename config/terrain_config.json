@@ -1,45 +1,182 @@
 {
-	"dirt": {
-		"scene": "res://scenes/world/dirt_1.tscn",
-		"weight": 0.60,
-		"gather_actions": [
-			{
-				"id": "chop_tree",
-				"name": "砍伐树木",
-				"gather_action": "chop",
-				"task_type": "GATHER",
-				"conditions": [
-					{ "type": "has_occupant", "value": "Tree" }
-				]
-			}
-		]
-	},
-	"stone": {
-		"scene": "res://scenes/world/stone_1.tscn",
-		"weight": 0.25,
-		"gather_actions": [
-			{
-				"id": "dig_stone",
-				"name": "挖掘石材",
-				"gather_action": "dig",
-				"task_type": "DIG",
-				"conditions": []
-			}
-		]
-	},
-	"ocean": {
-		"scene": "res://scenes/world/ocean_1.tscn",
-		"weight": 0.15,
-		"gather_actions": [
-			{
-				"id": "fish_ocean",
-				"name": "钓鱼",
-				"gather_action": "fish",
-				"task_type": "GATHER",
-				"conditions": [
-					{ "type": "property", "key": "fishable", "value": true }
-				]
-			}
-		]
+	"texture_dir": "res://assets/sprites/tiles/",
+	"null_texture": "res://assets/sprites/null_img.png",
+	"script_dir": "res://scripts/world/tiles/",
+
+	"tiles": {
+		"dirt": {
+			"weight": 0.60,
+			"name": "泥土",
+			"tile_type": 0,
+			"default_variant": "soil",
+			"tags": [],
+			"defaults": {
+				"passable": true,
+				"buildable": true,
+				"farmland": false,
+				"hardness": 1,
+				"depth": 0.0,
+				"fishable": false,
+				"resource_type": 0
+			},
+			"variants": {
+				"soil": {
+					"name": "普通土壤",
+					"scene": "res://scenes/world/dirt_1.tscn",
+					"moisture_base_rate": 0.8,
+					"fertility_base": 0.8
+				},
+				"grassland": {
+					"name": "草地",
+					"texture": "dirt1.png",
+					"script": "dirt_tile.gd",
+					"moisture_base_rate": 0.8,
+					"fertility_base": 0.8
+				},
+				"sand": {
+					"name": "沙地",
+					"script": "dirt_tile.gd",
+					"moisture_base_rate": 0.1,
+					"fertility_base": 0.2,
+					"farmland": true
+				},
+				"wetland": {
+					"name": "湿地",
+					"script": "dirt_tile.gd",
+					"moisture_base_rate": 1.8,
+					"fertility_base": 1.0
+				}
+			},
+			"gather_actions": [
+				{
+					"id": "chop_tree",
+					"name": "砍伐树木",
+					"gather_action": "chop",
+					"task_type": "GATHER",
+					"conditions": [
+						{ "type": "has_occupant", "value": "Tree" }
+					]
+				}
+			]
+		},
+		"stone": {
+			"weight": 0.25,
+			"name": "石头",
+			"tile_type": 1,
+			"default_variant": "hard_stone",
+			"tags": [],
+			"defaults": {
+				"passable": true,
+				"buildable": true,
+				"farmland": false,
+				"hardness": 5,
+				"depth": 0.0,
+				"fishable": false,
+				"resource_type": 1,
+				"moisture_base_rate": 0.1,
+				"fertility_base": 0.0
+			},
+			"variants": {
+				"hard_stone": {
+					"name": "坚硬石质",
+					"scene": "res://scenes/world/stone_1.tscn"
+				},
+				"gravel": {
+					"name": "碎石地",
+					"script": "stone_tile.gd",
+					"hardness": 2
+				},
+				"pebble": {
+					"name": "卵石地",
+					"script": "stone_tile.gd",
+					"hardness": 3
+				}
+			},
+			"gather_actions": [
+				{
+					"id": "dig_stone",
+					"name": "挖掘石材",
+					"gather_action": "dig",
+					"task_type": "DIG",
+					"conditions": []
+				}
+			]
+		},
+		"ocean": {
+			"weight": 0.15,
+			"name": "海洋",
+			"tile_type": 2,
+			"default_variant": "deep",
+			"tags": ["water_source"],
+			"defaults": {
+				"passable": false,
+				"buildable": false,
+				"farmland": false,
+				"hardness": 1,
+				"depth": 1.0,
+				"fishable": true,
+				"resource_type": 5,
+				"moisture_base_rate": 10.0,
+				"fertility_base": 0.0
+			},
+			"variants": {
+				"deep": {
+					"name": "深海",
+					"scene": "res://scenes/world/ocean_1.tscn"
+				},
+				"shallow": {
+					"name": "浅水",
+					"script": "ocean_tile.gd",
+					"depth": 0.3
+				},
+				"river": {
+					"name": "河流",
+					"script": "ocean_tile.gd",
+					"depth": 0.5
+				}
+			},
+			"gather_actions": [
+				{
+					"id": "fish_ocean",
+					"name": "钓鱼",
+					"gather_action": "fish",
+					"task_type": "GATHER",
+					"conditions": [
+						{ "type": "property", "key": "fishable", "value": true }
+					]
+				}
+			]
+		},
+		"farmland": {
+			"weight": 0.0,
+			"name": "农田",
+			"tile_type": 3,
+			"default_variant": "soil_farmland",
+			"tags": [],
+			"defaults": {
+				"passable": true,
+				"buildable": false,
+				"farmland": true,
+				"hardness": 1,
+				"depth": 0.0,
+				"fishable": false,
+				"resource_type": 0
+			},
+			"variants": {
+				"soil_farmland": {
+					"name": "土质农田",
+					"scene": "res://scenes/world/farmland_1.tscn",
+					"moisture_base_rate": 0.8,
+					"fertility_base": 0.8
+				},
+				"silt_farmland": {
+					"name": "淤泥农田",
+					"script": "farmland_tile.gd",
+					"moisture_base_rate": 1.8,
+					"fertility_base": 1.0
+				}
+			},
+			"gather_actions": []
+		}
 	}
 }

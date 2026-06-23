@@ -42,9 +42,9 @@
 
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `tile_type` | `int` | `-1` | 地块大类（子类在 `_ready()` 中赋值） |
-| `variant` | `String` | `""` | 变种名称 |
-| `display_name` | `String` | `""` | 人类可读名称 |
+| `tile_type` | `int` | `-1` | 地块大类（子类在 `_ready()` 中赋值，若已设置则保留） |
+| `variant` | `String` | `""` | 变种名称（子类在 `_ready()` 中赋值，若已设置则保留） |
+| `display_name` | `String` | `""` | 人类可读名称（子类在 `_ready()` 中赋值，若已设置则保留） |
 
 ### 数据访问方法
 
@@ -85,6 +85,7 @@
 |------|--------|--------|------|
 | `get_fertility()` | `float` | `0.0` | 肥力值 (0.0 ~ 5.0) |
 | `get_moisture()` | `float` | `0.0` | 湿度值 (0.0 ~ 5.0) |
+| `get_temperature()` | `float` | `25.0` | 温度值（摄氏度） |
 | `get_hardness()` | `int` | `1` | 硬度 |
 | `get_depth()` | `float` | `0.0` | 水深 (0.0 ~ 1.0) |
 | `is_fishable()` | `bool` | `false` | 是否可钓鱼 |
@@ -95,24 +96,38 @@
 |------|--------|------|
 | `get_type_name()` | `String` | 中文类型名（通过 TileInfo 获取） |
 | `get_description()` | `String` | "变种名 (类型名)" 格式的描述 |
+| `get_tags()` | `Array[String]` | 获取地块标签数组 |
+| `has_tag(tag: String)` | `bool` | 检查是否拥有指定标签 |
+
+### 属性更新
+
+| 方法 | 返回值 | 说明 |
+|------|--------|------|
+| `update_tags()` | `void` | 根据 TileInfo.tile_type 同步标签 |
+| `update_properties()` | `void` | 重新计算温度、湿度、肥力 |
+| `propagate_tag_update(tag, center_pos, world_node)` | `void` | 静态方法，BFS 传播更新周围地块 |
 
 ## 子类实现要求
 
 每个继承 `BaseTile` 的子类必须：
 
-1. 在 `_ready()` 中设置 `tile_type`、`variant`、`display_name`，然后调用 `super._ready()`
+1. 在 `_ready()` 中设置 `tile_type`、`variant`、`display_name`（仅当属性为默认值时设置，以兼容程序化创建的外部赋值），然后调用 `super._ready()`
 2. 覆写 `can_be_plowed()` 和 `can_be_dug()`
 3. 如需特有方法（如 `StoneTile.get_dig_produce()`），声明在子类中
 
-示例（DirtTile）：
+示例（DirtTile — 支持程序化变种覆盖）：
 
 ```gdscript
 class_name DirtTile extends BaseTile
 
 func _ready() -> void:
-	tile_type = TileInfo.TileType.DIRT
-	variant = "soil"
-	display_name = "普通土壤"
+	# 仅在未由外部程序化设置时才赋默认值
+	if tile_type == -1:
+		tile_type = TileInfo.TileType.DIRT
+	if variant.is_empty():
+		variant = "soil"
+	if display_name.is_empty():
+		display_name = "普通土壤"
 	super._ready()
 
 func can_be_plowed() -> bool:
@@ -122,15 +137,20 @@ func can_be_dug() -> bool:
 	return false
 ```
 
+### TSCN vs 程序化创建
+
+- **TSCN 模式**：场景中的脚本在 `_ready()` 时属性为默认值，子类正常赋值默认变种
+- **程序化模式**：`TerrainGenerator` 在 `add_child()` 之前通过 `set()` 设置属性，`_ready()` 检测到已设置则保留外部值
+
 ## 类继承关系
 
 ```
 Sprite2D
 └── BaseTile（抽象基类 — 本类）
-    ├── DirtTile    — 土质地面
-    ├── StoneTile   — 石质地面
-    ├── OceanTile   — 水域
-    └── FarmlandTile — 农田
+    ├── DirtTile    — 土质地面（变种: soil/grassland/sand/wetland）
+    ├── StoneTile   — 石质地面（变种: hard_stone/gravel/pebble）
+    ├── OceanTile   — 水域（变种: deep/shallow/river）
+    └── FarmlandTile — 农田（变种: soil_farmland/silt_farmland）
 ```
 
 ## 关联文档

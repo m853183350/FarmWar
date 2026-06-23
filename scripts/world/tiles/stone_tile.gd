@@ -20,9 +20,12 @@ const CAN_PRODUCE_MINERAL: bool = true
 # ============================================================
 
 func _ready() -> void:
-	tile_type = TileInfo.TileType.STONE
-	variant = "hard_stone"
-	display_name = "坚硬石质"
+	if tile_type == -1:
+		tile_type = TileInfo.TileType.STONE
+	if variant.is_empty():
+		variant = "hard_stone"
+	if display_name.is_empty():
+		display_name = "坚硬石质"
 	super._ready()
 
 # ============================================================

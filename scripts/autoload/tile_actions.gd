@@ -4,12 +4,12 @@
 ## 地块转化映射配置从 [code]config/tile_conversions.json[/code] 加载，
 ## 新增转化类型只需修改 JSON 配置即可，无需改代码。
 ##
+## 转化匹配不再依赖 [member Node.scene_file_path]，改为按 [enum TileInfo.TileType] 匹配，
+## 因此同时适用于 TSCN 实例化和程序化创建的地块。
+##
 ## 使用方式：
 ##   [code]TileActions.plow_tiles(tiles)[/code]   — 翻耕（DIRT → FARMLAND）
 ##   [code]TileActions.dig_tiles(tiles)[/code]    — 挖掘（STONE → DIRT）
-##
-## 注意：本脚本不直接引用项目自定义 class_name（TileInfo、BaseTile 等），
-## 而是通过 preload 的 Script 常量和 duck typing 访问，确保 autoload 编译独立性。
 extends Node
 
 const WorldUtils := preload("res://scripts/utils/world_utils.gd")
@@ -42,7 +42,7 @@ const CROP_SCENES: Dictionary = {
 # ============================================================
 
 ## 缓存的转化配置字典。
-## 结构：{ "plow": [{ "source": "...", "target": "..." }, ...], "dig": [...] }
+## 结构：{ "plow": [{ "source_tile_type": 0, "target_type_key": "...", "target_variant": "..." }], ... }
 var _config: Dictionary = {}
 
 ## 缓存的 world 节点引用（首次访问时查找）。
@@ -65,9 +65,8 @@ func _ready() -> void:
 ## 将指定网格坐标上的可翻耕地块转化为农田。
 ##
 ## 翻耕规则（来自 [code]config/tile_conversions.json[/code] 的 [code]plow[/code] 段）：
-##   - 只有 source 场景路径匹配的地块才会被转化
+##   - 只有 tile_type 匹配 [code]source_tile_type[/code] 的地块才会被转化
 ##   - 转化后继承源地块的 fertility 和 moisture
-##   - 沙地（sand 变种）已是农田，不会被二次转化
 ##
 ## [param tiles] 网格坐标数组（[Array] of [Vector2i]）。
 ## [param world_override] 可选：指定 world 节点（为 null 时自动查找 group "world"）。
@@ -105,7 +104,7 @@ func plow_tiles(tiles: Array, world_override: Node2D = null) -> int:
 ## 将指定网格坐标上的可挖掘地块转化为普通土壤。
 ##
 ## 挖掘规则（来自 [code]config/tile_conversions.json[/code] 的 [code]dig[/code] 段）：
-##   - 只有 source 场景路径匹配的地块才会被转化
+##   - 只有 tile_type 匹配 [code]source_tile_type[/code] 的地块才会被转化
 ##   - 挖掘产出石材资源（数量由原地块 StoneTile 实例的 get_dig_produce() 决定）
 ##
 ## [param tiles] 网格坐标数组（[Array] of [Vector2i]）。
@@ -202,7 +201,6 @@ func plant_crop(tiles: Array, crop_id: String, world_override: Node2D = null) ->
 ##
 ## 返回实际成功收获的作物数量。
 func harvest_crop(tiles: Array, world_override: Node2D = null) -> int:
-	# print("TileActions: 开始收获，目标坐标: %s" % tiles)
 	var world: Node2D = _resolve_world(world_override)
 	if world == null:
 		return 0
@@ -296,64 +294,77 @@ func _resolve_world(world_override: Node2D) -> Node2D:
 	_world_cache = WorldUtils.get_world()
 	return _world_cache
 
-# _find_tile 已迁移至 WorldUtils.find_tile()
-
 ## 尝试对单个地块执行转化。
-## 检查地块的场景路径是否匹配任一转化规则的 [code]source[/code]，
-## 匹配则替换为目标场景。返回 [code]true[/code] 表示成功转化。
+## 检查地块的 tile_type 是否匹配任一转化规则的 [code]source_tile_type[/code]，
+## 匹配则替换为目标地块。返回 [code]true[/code] 表示成功转化。
+## 支持 TSCN 实例化和程序化创建的地块（不再依赖 scene_file_path）。
 func _try_convert_tile(world: Node2D, grid_pos: Vector2i, conversions: Array) -> bool:
 	var old_tile: Node2D = WorldUtils.find_tile(world, grid_pos)
 	if old_tile == null:
 		return false
 
-	var source_path: String = old_tile.scene_file_path
-	if source_path.is_empty():
-		return false
-
-	var target_path: String = ""
-	var target_tile_type: int = -1
-	for rule in conversions:
-		var rule_dict: Dictionary = rule as Dictionary
-		if rule_dict.get("source", "") == source_path:
-			target_path = rule_dict.get("target", "")
-			target_tile_type = rule_dict.get("target_tile_type", -1)
-			break
-
-	if target_path.is_empty():
-		return false
-
-	_replace_tile(world, old_tile, target_path, grid_pos, target_tile_type)
-	return true
-
-## 执行地块节点替换。
-##
-## 流程：
-##   1. 实例化目标场景
-##   2. 克隆位置和节点名称
-##   3. 继承旧地块的 TileInfo 关键属性（fertility、moisture 等）
-##   4. 为目标地块创建并附加新的 TileInfo（类型设为目标类型）
-##   5. 替换子节点并释放旧节点
-##
-## [param target_tile_type] 对应 TileInfo.TileType 枚举值（-1 = 继承旧值）。
-func _replace_tile(world: Node2D, old_tile: Node2D, target_scene_path: String, grid_pos: Vector2i, target_tile_type: int = -1) -> void:
-	var target_scene: PackedScene = load(target_scene_path) as PackedScene
-	if target_scene == null:
-		push_error("TileActions: 无法加载目标场景: %s" % target_scene_path)
-		return
-
-	var new_tile: Node2D = target_scene.instantiate()
-	new_tile.position = old_tile.position
-	new_tile.name = old_tile.name
-
-	# 继承旧地块的 TileInfo 数据（使用 duck typing 避免 class_name 依赖）
+	# 获取源地块的 tile_type
 	var old_data: Resource = null
 	if old_tile.has_method("get_tile_data"):
 		old_data = old_tile.get_tile_data()
 	elif old_tile.has_meta("tile_data"):
 		old_data = old_tile.get_meta("tile_data")
 
-	if old_data:
-		var new_data: Resource = _create_converted_data(old_data, target_tile_type)
+	if old_data == null:
+		return false
+
+	var source_type: int = old_data.tile_type
+
+	# 查找匹配的转化规则
+	var target_type_key: String = ""
+	var target_variant: String = ""
+	for rule in conversions:
+		var rule_dict: Dictionary = rule as Dictionary
+		if rule_dict.get("source_tile_type", -1) == source_type:
+			target_type_key = rule_dict.get("target_type_key", "")
+			target_variant = rule_dict.get("target_variant", "")
+			break
+
+	if target_type_key.is_empty():
+		return false
+
+	_replace_tile(world, old_tile, target_type_key, target_variant, grid_pos)
+	return true
+
+## 执行地块节点替换。
+##
+## 通过 [TerrainGenerator] 创建目标地块（自动选择 TSCN 或程序化模式），
+## 继承旧地块的 TileInfo 关键属性（fertility、moisture 等）。
+func _replace_tile(world: Node2D, old_tile: Node2D, target_type_key: String, target_variant: String, grid_pos: Vector2i) -> void:
+	# 通过 TerrainGenerator 创建目标地块实例
+	var new_tile: Node2D = null
+	if world.has_method("create_tile_instance"):
+		new_tile = world.create_tile_instance(target_type_key, target_variant)
+	else:
+		push_error("TileActions: world 节点没有 create_tile_instance 方法")
+		return
+
+	if new_tile == null:
+		push_error("TileActions: 无法创建目标地块 '%s.%s'" % [target_type_key, target_variant])
+		return
+
+	new_tile.position = old_tile.position
+	new_tile.name = old_tile.name
+
+	# 继承旧地块的 TileInfo 数据
+	var old_data: Resource = null
+	if old_tile.has_method("get_tile_data"):
+		old_data = old_tile.get_tile_data()
+	elif old_tile.has_meta("tile_data"):
+		old_data = old_tile.get_meta("tile_data")
+
+	if old_data and world.has_method("get_tile_config_for_type") and world.has_method("merge_tile_config"):
+		var type_cfg: Dictionary = world.get_tile_config_for_type(target_type_key)
+		var variants: Dictionary = type_cfg.get("variants", {})
+		var variant_cfg: Dictionary = variants.get(target_variant, {})
+		var merged_config: Dictionary = world.merge_tile_config(type_cfg, variant_cfg)
+
+		var new_data: Resource = _create_converted_data(old_data, type_cfg.get("tile_type", 0), target_variant, merged_config)
 		if new_tile.has_method("set_tile_data"):
 			new_tile.set_tile_data(new_data)
 		else:
@@ -365,21 +376,18 @@ func _replace_tile(world: Node2D, old_tile: Node2D, target_scene_path: String, g
 	world.add_child(new_tile)
 
 ## 为转化后的地块创建新的 TileInfo 数据资源。
-## 继承源地块的坐标、肥力、湿度；[param target_tile_type] 指定目标地块大类。
-func _create_converted_data(old_data: Resource, target_tile_type: int) -> Resource:
+## 继承源地块的坐标、肥力、湿度；通过 config 设置目标类型的默认属性。
+func _create_converted_data(old_data: Resource, target_tile_type: int, target_variant: String, merged_config: Dictionary) -> Resource:
 	var new_data: Resource = TileInfoScript.new()
 	new_data.grid_position = old_data.grid_position
-	# 使用目标类型（由 JSON 配置的 target_tile_type 指定）
-	if target_tile_type >= 0:
-		new_data.tile_type = target_tile_type
-	else:
-		new_data.tile_type = old_data.tile_type
-	# 继承耕地相关属性
-	new_data.fertility = old_data.fertility
-	new_data.moisture = old_data.moisture
-	# apply_defaults() 会根据 tile_type + variant 设置通行/建造等默认值
-	new_data.apply_defaults()
-	# 恢复继承值（apply_defaults 可能将 fertility/moisture 覆盖为目标类型的默认值）
+	new_data.tile_type = target_tile_type
+	new_data.variant = target_variant
+
+	# 使用合并后的配置设置默认属性
+	if not merged_config.is_empty():
+		new_data.apply_defaults(merged_config)
+
+	# 继承耕地相关属性（覆盖 apply_defaults 可能重置的值）
 	new_data.fertility = old_data.fertility
 	new_data.moisture = old_data.moisture
 	return new_data
@@ -479,11 +487,9 @@ func _try_harvest_crop(world: Node2D, grid_pos: Vector2i) -> Array:
 			return []
 
 	# 通过事件驱动收获 — 作物自行响应并收获
-	# Godot 信号是同步执行的，emit 返回后作物已完成收获逻辑
 	if EventBus:
 		EventBus.crop_harvest_requested.emit(tile)
 	else:
-		# 降级方案：直接调用 harvest()
 		if crop_node.has_method("harvest"):
 			crop_node.harvest()
 		return []

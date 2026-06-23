@@ -23,8 +23,8 @@ const CONFIG_PATH: String = "res://config/terrain_config.json"
 # 6. 私有变量
 # ============================================================
 
-## 地形配置缓存（scene_path → terrain_key）。
-var _terrain_by_scene: Dictionary = {}
+## 地形配置缓存（tile_type → terrain_key）。
+var _terrain_by_tile_type: Dictionary = {}
 
 ## 匹配规则缓存（terrain_key → rules）。
 var _rules_by_terrain: Dictionary = {}
@@ -118,16 +118,26 @@ func _load_config() -> void:
 		return
 
 	var config: Dictionary = data as Dictionary
-	for terrain_key: String in config:
-		var terrain_data: Variant = config[terrain_key]
+
+	# 新格式：地块类型在 "tiles" 键下
+	var tiles_raw: Variant = config.get("tiles", {})
+	var tiles_dict: Dictionary = {}
+	if tiles_raw is Dictionary:
+		tiles_dict = tiles_raw as Dictionary
+	else:
+		# 兼容旧格式（无 "tiles" 包裹）
+		tiles_dict = config
+
+	for terrain_key: String in tiles_dict:
+		var terrain_data: Variant = tiles_dict[terrain_key]
 		if not terrain_data is Dictionary:
 			continue
 		var terrain_dict: Dictionary = terrain_data as Dictionary
 
-		# 建立 scene_path → terrain_key 的反向映射
-		var scene_path: String = terrain_dict.get("scene", "")
-		if not scene_path.is_empty():
-			_terrain_by_scene[scene_path] = terrain_key
+		# 建立 tile_type → terrain_key 的反向映射（兼容 TSCN 和程序化地块）
+		var tile_type: int = int(terrain_dict.get("tile_type", -1))
+		if tile_type >= 0:
+			_terrain_by_tile_type[tile_type] = terrain_key
 
 		# 提取 gather_actions 规则
 		var actions: Array = []
@@ -159,11 +169,26 @@ func _match_rule(tile: Node2D) -> Dictionary:
 
 	return {}
 
-## 通过地块的 scene_file_path 反向查找地形类型键。
+## 通过地块的 tile_type 反向查找地形类型键。
+## 兼容 TSCN 实例化和程序化创建的地块（不再依赖 scene_file_path）。
 func _resolve_terrain_key(tile: Node2D) -> String:
+	# 通过 TileInfo.tile_type 查找
+	if tile.has_method("get_tile_data"):
+		var td: Resource = tile.get_tile_data()
+		if td and _terrain_by_tile_type.has(td.tile_type):
+			return _terrain_by_tile_type[td.tile_type]
+	elif tile.has_meta("tile_data"):
+		var td: Resource = tile.get_meta("tile_data")
+		if td and _terrain_by_tile_type.has(td.tile_type):
+			return _terrain_by_tile_type[td.tile_type]
+
+	# 降级：scene_file_path 方式（仅兼容尚未迁移的旧地块数据）
 	var scene_path: String = tile.scene_file_path
-	if _terrain_by_scene.has(scene_path):
-		return _terrain_by_scene[scene_path]
+	if not scene_path.is_empty():
+		for key: String in _rules_by_terrain:
+			if not _terrain_by_tile_type.values().has(key):
+				return key
+
 	return ""
 
 ## 检查地块是否满足所有条件（AND 逻辑）。

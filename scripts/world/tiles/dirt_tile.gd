@@ -9,9 +9,12 @@ class_name DirtTile extends BaseTile
 # ============================================================
 
 func _ready() -> void:
-	tile_type = TileInfo.TileType.DIRT
-	variant = "soil"
-	display_name = "普通土壤"
+	if tile_type == -1:
+		tile_type = TileInfo.TileType.DIRT
+	if variant.is_empty():
+		variant = "soil"
+	if display_name.is_empty():
+		display_name = "普通土壤"
 	super._ready()
 
 # ============================================================

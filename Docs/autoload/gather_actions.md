@@ -14,6 +14,7 @@ Autoload 全局单例。根据地块类型和内容物判定适用的采集动�
 
 - 自动判定地块适用的采集动作（挖掘、砍伐、钓鱼等）
 - 规则从配置文件加载，新增地形类型或采集动作无需修改代码
+- 通过 `tile_type` 匹配地形类型（兼容 TSCN 和程序化创建的地块）
 - 生成 TaskData 供 UnitManager 分配
 - 通过 EventBus 发出 `gather_action_triggered` 供 UI 反馈和音效
 
@@ -21,7 +22,7 @@ Autoload 全局单例。根据地块类型和内容物判定适用的采集动�
 
 | 依赖 | 说明 |
 |------|------|
-| `config/terrain_config.json` | 采集规则配置（`gather_actions` 键） |
+| `config/terrain_config.json` | 采集规则配置（`gather_actions` 键，在 `tiles` 下） |
 | `EventBus` | 发出 `gather_action_triggered` 信号 |
 | `TaskData` | 生成采集任务 |
 | group `"world"` | 通过 group 查找 world 节点 |
@@ -46,52 +47,34 @@ Autoload 全局单例。根据地块类型和内容物判定适用的采集动�
 
 ## 配置格式
 
-采集规则在 `config/terrain_config.json` 中与地形配置放在一起，每个地形类型可配置多个 `gather_actions`：
+采集规则在 `config/terrain_config.json` 的 `tiles.<type>.gather_actions` 下：
 
 ```json
 {
-  "dirt": {
-    "scene": "res://scenes/world/dirt_1.tscn",
-    "weight": 0.60,
-    "gather_actions": [
-      {
-        "id": "chop_tree",
-        "name": "砍伐树木",
-        "gather_action": "chop",
-        "task_type": "GATHER",
-        "conditions": [
-          { "type": "has_occupant", "value": "Tree" }
-        ]
-      }
-    ]
-  },
-  "stone": {
-    "scene": "res://scenes/world/stone_1.tscn",
-    "weight": 0.25,
-    "gather_actions": [
-      {
-        "id": "dig_stone",
-        "name": "挖掘石材",
-        "gather_action": "dig",
-        "task_type": "DIG",
-        "conditions": []
-      }
-    ]
-  },
-  "ocean": {
-    "scene": "res://scenes/world/ocean_1.tscn",
-    "weight": 0.15,
-    "gather_actions": [
-      {
-        "id": "fish_ocean",
-        "name": "钓鱼",
-        "gather_action": "fish",
-        "task_type": "GATHER",
-        "conditions": [
-          { "type": "property", "key": "fishable", "value": true }
-        ]
-      }
-    ]
+  "texture_dir": "res://assets/sprites/tiles/",
+  "null_texture": "res://assets/sprites/null_img.png",
+  "script_dir": "res://scripts/world/tiles/",
+  "tiles": {
+    "dirt": {
+      "weight": 0.60,
+      "name": "泥土",
+      "tile_type": 0,
+      "default_variant": "soil",
+      "tags": [],
+      "defaults": { ... },
+      "variants": { ... },
+      "gather_actions": [
+        {
+          "id": "chop_tree",
+          "name": "砍伐树木",
+          "gather_action": "chop",
+          "task_type": "GATHER",
+          "conditions": [
+            { "type": "has_occupant", "value": "Tree" }
+          ]
+        }
+      ]
+    }
   }
 }
 ```
@@ -120,7 +103,7 @@ determine_and_create_tasks(tiles)
     │
     └── for each tile:
         │
-        ├── 通过 scene_file_path → terrain_key 反向查找地形类型
+        ├── 通过 tile_type → terrain_key 反向查找地形类型（兼容 TSCN 和程序化地块）
         │
         ├── 遍历该地形的 gather_actions 规则（按数组顺序 = 优先级）
         │

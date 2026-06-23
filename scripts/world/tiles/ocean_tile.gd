@@ -9,9 +9,12 @@ class_name OceanTile extends BaseTile
 # ============================================================
 
 func _ready() -> void:
-	tile_type = TileInfo.TileType.OCEAN
-	variant = "deep"
-	display_name = "深海"
+	if tile_type == -1:
+		tile_type = TileInfo.TileType.OCEAN
+	if variant.is_empty():
+		variant = "deep"
+	if display_name.is_empty():
+		display_name = "深海"
 	super._ready()
 
 # ============================================================
