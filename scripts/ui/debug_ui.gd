@@ -23,15 +23,18 @@ var _overlay_left: CanvasLayer = null
 # ============================================================
 
 func _ready() -> void:
-	# 获取 autoload 实例并重新挂载为子节点
-	_overlay_right = get_node("/root/DebugOverlay") as CanvasLayer
-	_overlay_left = get_node("/root/DebugOverlayLeft") as CanvasLayer
+	# 延迟到下一帧执行 reparent，避免在场景树初始化期间操作节点导致锁定冲突
+	call_deferred("_reparent_overlays")
 
-	if _overlay_right:
+func _reparent_overlays() -> void:
+	_overlay_right = get_node_or_null("/root/DebugOverlay") as CanvasLayer
+	_overlay_left = get_node_or_null("/root/DebugOverlayLeft") as CanvasLayer
+
+	if _overlay_right and _overlay_right.get_parent() != self:
 		_overlay_right.get_parent().remove_child(_overlay_right)
 		add_child(_overlay_right)
 
-	if _overlay_left:
+	if _overlay_left and _overlay_left.get_parent() != self:
 		_overlay_left.get_parent().remove_child(_overlay_left)
 		add_child(_overlay_left)
 
