@@ -33,10 +33,10 @@ const MOISTURE_MAX: float = 5.0
 # -------- 温度计算参数 --------
 
 ## 热源修正值上限 y（热源能提供的最大温度修正）。
-const HOT_SOURCE_MAX_Y: float = 1.0
+const HOT_SOURCE_MAX_Y: float = 500.0
 
 ## 热源距离倍率 t — 每单位曼哈顿距离衰减量。
-const HOT_SOURCE_DISTANCE_FACTOR: float = 0.3
+const HOT_SOURCE_DISTANCE_FACTOR: float = 50
 
 ## 默认环境温度（摄氏度），待季节气候系统实现后替换。
 const DEFAULT_AMBIENT_TEMPERATURE: float = 25.0
@@ -423,14 +423,14 @@ func _calculate_fertility() -> float:
 ## 根据热源 + 环境温度计算地块温度（预留，待季节气候系统完成后完善）。
 ##
 ## 当前使用默认环境温度 + 热源修正。
-## 公式（暂定）：[code]环境温度 + 热源修正值 + temperature_modifier_1 + temperature_modifier_2[/code]
+## 公式（暂定）：[code]环境温度 + 热源修正值（10*一个倍率） + temperature_modifier_1 + temperature_modifier_2[/code]
 func _calculate_temperature(world: Node2D, grid_pos: Vector2i) -> float:
 	if not _tile_data:
 		return DEFAULT_AMBIENT_TEMPERATURE
 
 	# 如果自身就是热源，直接返回较高温度
 	if "hot_source" in _tile_data.tags:
-		return DEFAULT_AMBIENT_TEMPERATURE + 10.0
+		return DEFAULT_AMBIENT_TEMPERATURE + 1000.0
 
 	var hot_mod := _calc_tag_proximity_modifier(world, grid_pos, "hot_source", HOT_SOURCE_MAX_Y, HOT_SOURCE_DISTANCE_FACTOR)
 	var result := DEFAULT_AMBIENT_TEMPERATURE + hot_mod * 10.0 + _tile_data.temperature_modifier_1 + _tile_data.temperature_modifier_2
@@ -442,7 +442,7 @@ func _calculate_temperature(world: Node2D, grid_pos: Vector2i) -> float:
 ## 返回 [code]max((max_y - distance_factor * distance), -1.0)[/code]。
 ## 若范围内无匹配标签的地块，返回 [code]-1.0[/code]。
 func _calc_tag_proximity_modifier(world: Node2D, grid_pos: Vector2i, tag: String, max_y: float, distance_factor: float) -> float:
-	var max_range := int(ceil((max_y + 1.0) / distance_factor))
+	var max_range := int(ceil(max_y / distance_factor))
 	var nearest_dist := 9999
 
 	for dx: int in range(-max_range, max_range + 1):
@@ -458,13 +458,12 @@ func _calc_tag_proximity_modifier(world: Node2D, grid_pos: Vector2i, tag: String
 			if td and tag in td.tags:
 				if dist < nearest_dist:
 					nearest_dist = dist
-					# 距离 0 是最优解，提前退出
 					if nearest_dist == 0:
 						break
 
 	if nearest_dist >= 9999:
-		return -1.0
-	return maxf(max_y - distance_factor * float(nearest_dist), -1.0)
+		return 0.0
+	return max_y * (1.0 - float(nearest_dist) / float(max_range))
 
 ## 校验子类是否设置了有效的身份标识。
 func _validate_constants() -> void:
