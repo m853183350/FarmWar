@@ -374,6 +374,7 @@ func _replace_tile(world: Node2D, old_tile: Node2D, target_type_key: String, tar
 	world.remove_child(old_tile)
 	old_tile.queue_free()
 	world.add_child(new_tile)
+	new_tile.update_properties()  # 更新新地块的计算属性（fertility、moisture 等）
 
 ## 为转化后的地块创建新的 TileInfo 数据资源。
 ## 继承源地块的坐标、肥力、湿度；通过 config 设置目标类型的默认属性。

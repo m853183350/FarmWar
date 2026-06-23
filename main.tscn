@@ -11,8 +11,8 @@
 [node name="Node2D" type="Node2D" unique_id=352653355]
 
 [node name="world" parent="." unique_id=1620020176 instance=ExtResource("1_ig7tw")]
-map_width = 100
-map_height = 100
+map_width = 50
+map_height = 50
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=936608823]
 position = Vector2(968, 544)

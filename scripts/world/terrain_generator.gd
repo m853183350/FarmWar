@@ -51,10 +51,10 @@ const FALLBACK_SCENE_PATH: String = "res://scenes/debug/null_img.tscn"
 @export var generation_mode: GenerationMode = GenerationMode.ALL_RANDOM
 
 ## 地图宽度（地块列数）。
-@export var map_width: int = 32
+@export var map_width: int = 32  # 后期可能增加到400
 
 ## 地图高度（地块行数）。
-@export var map_height: int = 32
+@export var map_height: int = 32  # 后期可能增加到400
 
 ## 单个地块的像素大小（应与 tile 场景的视觉尺寸匹配）。
 @export var tile_size: int = 64
