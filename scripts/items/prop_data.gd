@@ -7,6 +7,7 @@
 ##   - 稀有度分 5 级（COMMON → LEGENDARY）
 ##   - 被动触发型（监听 EventBus 信号）
 ##   - 支持堆叠（max_stack 控制上限）
+##   - 支持复合效果（一个道具可配置多个效果）
 ##
 ## 使用方式（通过 preload 避免跨文件类名引用问题）：
 ##   [codeblock]
@@ -15,6 +16,17 @@
 ##   p.init_from_dict(json_data)
 ##   [/codeblock]
 class_name PropData extends RefCounted
+
+# ============================================================
+# 3. 常量
+# ============================================================
+
+## 稀有度等级。
+const RARITY_COMMON: String = "common"
+const RARITY_UNCOMMON: String = "uncommon"
+const RARITY_RARE: String = "rare"
+const RARITY_EPIC: String = "epic"
+const RARITY_LEGENDARY: String = "legendary"
 
 # ============================================================
 # 5. 公开变量
@@ -30,7 +42,7 @@ var prop_name: String = ""
 var description: String = ""
 
 ## 稀有度等级。[br]
-## 可选值：COMMON, UNCOMMON, RARE, EPIC, LEGENDARY
+## 可选值：common, uncommon, rare, epic, legendary
 var rarity: String = "common"
 
 ## 图标纹理路径（相对于 res://），暂可留空。
@@ -46,13 +58,12 @@ var trigger_signal: StringName = &""
 ## 可包含 cooldown_ticks（冷却时间）、probability（触发概率）等。
 var trigger_condition: Dictionary = {}
 
-## 效果类型标识。
-var effect_type: StringName = &""
+## 效果配置列表。[br]
+## 每个元素为 [Dictionary]：{ type: StringName, params: Dictionary }[br]
+## 支持复合效果（一个道具多个效果）和堆叠（持有 n 个执行 n 次）。
+var effects: Array[Dictionary] = []
 
-## 效果参数字典，内容取决于 effect_type。
-var effect_params: Dictionary = {}
-
-## 分类标签数组，用于筛选和分类。
+## 分类标签数组（不可变），用于筛选和分类。
 var tags: Array[String] = []
 
 # ============================================================
@@ -60,7 +71,8 @@ var tags: Array[String] = []
 # ============================================================
 
 ## 从 JSON Dictionary 初始化道具数据。[br]
-## 已知字段被填充，未知字段被忽略，缺失字段使用默认值。
+## 已知字段被填充，未知字段被忽略，缺失字段使用默认值。[br]
+## 兼容旧格式（effect_type + effect_params）自动转换为新 effects 数组格式。
 func init_from_dict(data: Dictionary) -> void:
 	prop_id = data.get("prop_id", "") as String
 	prop_name = data.get("prop_name", "") as String
@@ -74,10 +86,8 @@ func init_from_dict(data: Dictionary) -> void:
 
 	trigger_condition = data.get("trigger_condition", {}) as Dictionary
 
-	var effect_type_str: String = data.get("effect_type", "") as String
-	effect_type = StringName(effect_type_str) if not effect_type_str.is_empty() else &""
-
-	effect_params = data.get("effect_params", {}) as Dictionary
+	# 解析效果配置 — 兼容新旧两种格式
+	_parse_effects(data)
 
 	var tags_raw = data.get("tags", [])
 	if tags_raw is Array:
@@ -85,3 +95,53 @@ func init_from_dict(data: Dictionary) -> void:
 		for tag in tags_raw:
 			tags_arr.append(tag as String)
 		tags = tags_arr
+
+# ============================================================
+# 9. 公开方法 — 便捷属性
+# ============================================================
+
+## 首个效果的效果类型（便捷访问）。[br]
+## 对于只有一个效果的道具，可直接通过此属性获取类型。
+## 等效于 [code]effects[0].type[/code]。
+var effect_type: StringName:
+	get:
+		if effects.size() > 0:
+			return effects[0].get("type", &"") as StringName
+		return &""
+
+## 首个效果的效果参数（便捷访问）。[br]
+## 等效于 [code]effects[0].params[/code]。
+var effect_params: Dictionary:
+	get:
+		if effects.size() > 0:
+			return effects[0].get("params", {}) as Dictionary
+		return {}
+
+# ============================================================
+# 10. 私有方法
+# ============================================================
+
+## 解析效果配置，兼容新旧两种 JSON 格式。[br]
+## 新格式：[code]{ "effects": [{"type": "...", "params": {...}}] }[/code][br]
+## 旧格式：[code]{ "effect_type": "...", "effect_params": {...} }[/code]
+func _parse_effects(data: Dictionary) -> void:
+	# 优先使用新格式
+	if data.has("effects"):
+		var raw: Array = data.get("effects", []) as Array
+		for entry in raw:
+			if entry is Dictionary:
+				var entry_dict: Dictionary = entry as Dictionary
+				var effect: Dictionary = {}
+				var type_str: String = entry_dict.get("type", "") as String
+				effect["type"] = StringName(type_str) if not type_str.is_empty() else &""
+				effect["params"] = entry_dict.get("params", {}) as Dictionary
+				effects.append(effect)
+		return
+
+	# 兼容旧格式：effect_type + effect_params
+	var old_type: String = data.get("effect_type", "") as String
+	if not old_type.is_empty():
+		var effect: Dictionary = {}
+		effect["type"] = StringName(old_type)
+		effect["params"] = data.get("effect_params", {}) as Dictionary
+		effects.append(effect)

@@ -1,19 +1,19 @@
 ## 道具管理器 — 管理玩家持有道具的 Node。
 ##
 ## 挂载在 [Player] 节点下，负责加载道具定义库、维护持有状态、
-## 动态订阅 [EventBus] 信号并在触发时执行道具效果。
+## 动态订阅 [EventBus] 信号并在触发时委托 [EffectManager] 执行道具效果。
 ##
 ## 设计参考 roguelike 游戏的道具系统：
 ##   - 数据驱动：道具定义存放在 [code]config/items/props/*.json[/code]
 ##   - 事件触发：通过 EventBus 信号驱动效果执行
 ##   - 动态绑定：仅连接已持有道具所需的信号，节省开销
 ##   - 堆叠机制：max_stack 控制持有上限，持有多个时效果叠加
-##   - 效果分离：效果逻辑在 [code]scripts/items/effects/[/code] 中独立实现
+##   - 效果分离：效果逻辑由 [EffectManager] 独立管理
 class_name PropManager extends Node
 
 const JsonConfigLoader = preload("res://scripts/utils/json_loader.gd")
 const PropDataClass = preload("res://scripts/items/prop_data.gd")
-const PropEffectBaseClass = preload("res://scripts/items/effects/prop_effect_base.gd")
+const EffectManagerClass = preload("res://scripts/items/effect_manager.gd")
 const AddStorageItemEffectClass = preload("res://scripts/items/effects/add_storage_item_effect.gd")
 
 # ============================================================
@@ -58,9 +58,8 @@ var prop_library: Dictionary = {}
 ## 一场游戏中 Storage 位置不会变化，缓存避免每次效果执行时重复查找。
 var _storage: Storage = null
 
-## 效果实例缓存。[br]
-## 结构：[code]{ effect_type: PropEffectBase }[/code]
-var _effects: Dictionary = {}
+## 效果管理器，负责效果注册、条件评估和执行。
+var _effect_manager: RefCounted = null
 
 ## 信号绑定追踪。[br]
 ## 结构：[code]{ signal_name: Array[String] }[/code] — 每个信号关联的道具 ID 列表。
@@ -76,10 +75,10 @@ var _connected_signals: Dictionary = {}
 
 func _ready() -> void:
 	_cache_storage()
-	_init_effects()
+	_setup_effect_manager()
 	_load_prop_library()
 	_register_debug_info()
-	print("PropManager: 初始化完成，已加载 %d 个道具定义，%d 个效果类型" % [prop_library.size(), _effects.size()])
+	print("PropManager: 初始化完成，已加载 %d 个道具定义，%d 个效果类型" % [prop_library.size(), _effect_manager.registry.size()])
 
 func _exit_tree() -> void:
 	_disconnect_all_signals()
@@ -193,13 +192,25 @@ func _cache_storage() -> void:
 	if _storage == null:
 		push_error("PropManager: 未找到 Storage 子节点")
 
-## 初始化效果实例。[br]
-## 将效果类型标识映射到对应的效果实例对象。[br]
-## 新增效果只需在此方法中添加一行注册代码，无需修改其他逻辑。
-func _init_effects() -> void:
+## 初始化 [EffectManager]。[br]
+## 创建 EffectManager 实例、设置上下文提供器、注册所有效果类型。[br]
+## 新增效果只需在此方法中添加一行 [method EffectManager.register_effect] 调用。
+func _setup_effect_manager() -> void:
+	_effect_manager = EffectManagerClass.new()
+
+	# 设置上下文提供器 — 返回效果执行时需要的服务引用
+	_effect_manager.set_context_provider(_provide_effect_context)
+
+	# 注册效果类型 — 新增效果在此注册
 	var add_item_effect: RefCounted = AddStorageItemEffectClass.new()
-	add_item_effect.init(_storage)
-	_effects[&"add_storage_item"] = add_item_effect
+	_effect_manager.register_effect(&"add_storage_item", add_item_effect)
+
+## 上下文提供器 — 返回服务引用 [Dictionary]。[br]
+## 由 [EffectManager] 在每次执行效果前调用，确保获取最新的服务引用。
+func _provide_effect_context() -> Dictionary:
+	return {
+		"storage": _storage,
+	}
 
 ## 从 [constant PROP_CONFIG_DIR] 加载所有道具 JSON 定义文件。
 func _load_prop_library() -> void:
@@ -335,20 +346,42 @@ func _get_signal_handler(signal_name: StringName) -> Callable:
 ## 注意：成熟不等同于收获，本信号在收获之前发出。
 func _on_crop_matured(crop_node: Node2D, grid_pos: Vector2i, crop_id: String) -> void:
 	print("PropManager: 收到 crop_matured — crop=%s, pos=(%d,%d)" % [crop_id, grid_pos.x, grid_pos.y])
-	_process_trigger(TRIGGER_CROP_MATURED)
+	var trigger_context: Dictionary = {
+		"trigger_signal": TRIGGER_CROP_MATURED,
+		"crop_node": crop_node,
+		"grid_pos": grid_pos,
+		"crop_id": crop_id,
+	}
+	_process_trigger(TRIGGER_CROP_MATURED, trigger_context)
 
 ## 响应 [signal EventBus.crop_harvested] 信号。
 func _on_crop_harvested(yields: Array, crop_id: String) -> void:
 	print("PropManager: 收到 crop_harvested — crop=%s, yields=%d" % [crop_id, yields.size()])
-	_process_trigger(TRIGGER_CROP_HARVESTED)
+	var trigger_context: Dictionary = {
+		"trigger_signal": TRIGGER_CROP_HARVESTED,
+		"yields": yields,
+		"crop_id": crop_id,
+	}
+	_process_trigger(TRIGGER_CROP_HARVESTED, trigger_context)
 
 ## 响应 [signal EventBus.crop_stage_changed] 信号。
-func _on_crop_stage_changed(_crop_node: Node2D, _grid_pos: Vector2i, _crop_id: String, _old_stage: int, _new_stage: int, _is_mature: bool) -> void:
-	_process_trigger(TRIGGER_CROP_STAGE_CHANGED)
+func _on_crop_stage_changed(crop_node: Node2D, grid_pos: Vector2i, crop_id: String, old_stage: int, new_stage: int, is_mature: bool) -> void:
+	var trigger_context: Dictionary = {
+		"trigger_signal": TRIGGER_CROP_STAGE_CHANGED,
+		"crop_node": crop_node,
+		"grid_pos": grid_pos,
+		"crop_id": crop_id,
+		"old_stage": old_stage,
+		"new_stage": new_stage,
+		"is_mature": is_mature,
+	}
+	_process_trigger(TRIGGER_CROP_STAGE_CHANGED, trigger_context)
 
 ## 对指定信号关联的所有道具执行效果。[br]
-## 持有多个相同道具时效果叠加（执行 count 次）。
-func _process_trigger(signal_name: StringName) -> void:
+## 委托给 [EffectManager] 处理效果查找、条件评估和执行。[br]
+## 持有多个相同道具时效果叠加（执行 count 次）。[br]
+## [param trigger_context] 触发时的信号数据，传递给 EffectManager 构建运行时上下文。
+func _process_trigger(signal_name: StringName, trigger_context: Dictionary) -> void:
 	var bindings: Array = _signal_bindings.get(signal_name, []) as Array
 	if bindings.is_empty():
 		return
@@ -365,25 +398,8 @@ func _process_trigger(signal_name: StringName) -> void:
 		var prop_name: String = data.get("prop_name") as String
 		print("PropManager: 触发道具 '%s'（信号: %s, 持有: %d）" % [prop_name, signal_name, count])
 
-		# 持有 n 个道具，效果执行 n 次
-		for _i: int in range(count):
-			_execute_effect(data)
-
-# ============================================================
-# 10. 私有方法 — 效果执行
-# ============================================================
-
-## 根据效果类型分发到对应的效果实例。[br]
-## 效果实例在 [method _init_effects] 中注册，新增效果无需修改本方法。
-func _execute_effect(data: RefCounted) -> void:
-	var effect_type: StringName = data.get("effect_type") as StringName
-	var effect: RefCounted = _effects.get(effect_type, null) as PropEffectBase
-	if effect == null:
-		push_warning("PropManager: 未注册的效果类型 '%s'（道具: %s）" % [effect_type, data.get("prop_id")])
-		return
-
-	var params: Dictionary = data.get("effect_params") as Dictionary
-	effect.execute(params)
+		# 委托给 EffectManager 执行效果
+		_effect_manager.execute(data, count, trigger_context)
 
 # ============================================================
 # 10. 私有方法 — 调试
@@ -417,10 +433,17 @@ func _update_debug_info() -> void:
 			var bindings: Array = _signal_bindings[signal_name] as Array
 			debug_str += "  %s: %s\n" % [signal_name, str(bindings)]
 
-	# Effects info
-	debug_str += "\nEffects:\n"
-	for effect_type: StringName in _effects:
-		debug_str += "  %s: OK\n" % effect_type
+	# EffectManager info
+	if _effect_manager != null:
+		debug_str += "\nEffectManager:\n"
+		var registered: Array[StringName] = _effect_manager.get_registered_types()
+		if registered.is_empty():
+			debug_str += "  (no effects registered)\n"
+		else:
+			for effect_type: StringName in registered:
+				debug_str += "  %s: OK\n" % effect_type
+	else:
+		debug_str += "\nEffectManager: NULL\n"
 
 	# Storage status
 	debug_str += "\nStorage: %s\n" % ("OK" if _storage != null else "NULL")

@@ -1,6 +1,6 @@
 # PropManager（道具管理器）
 
-管理玩家持有道具的 Node，挂载在 Player 节点下。负责加载道具定义、维护道具持有状态、动态订阅 EventBus 信号并在触发时执行效果。
+管理玩家持有道具的 Node，挂载在 Player 节点下。负责加载道具定义、维护道具持有状态、动态订阅 EventBus 信号并在触发时委托 [EffectManager] 执行效果。
 
 ## 用途
 
@@ -17,7 +17,8 @@
 | `EventBus` | Autoload，动态订阅/取消订阅信号 |
 | `PropData` | RefCounted，道具定义数据类 |
 | `PropEffectBase` | 效果基类，效果逻辑在 `scripts/items/effects/` 中独立实现 |
-| `Storage` | 在 `_ready()` 中从父节点 Player 获取并缓存，一场游戏只需获取一次 |
+| `EffectManager` | RefCounted，管理效果注册表和执行流程，PropManager 委托效果执行给它 |
+| `Storage` | 通过 `_provide_effect_context()` 提供给 EffectManager，不再直接注入到效果中 |
 | `config/items/props/` | 道具定义 JSON 配置文件目录 |
 
 ## 公开 API
@@ -83,47 +84,55 @@ PropManager 维护 `_signal_bindings` 字典，记录每个 EventBus 信号关�
 
 这种策略避免了为未持有的道具浪费信号处理开销。
 
-## Storage 缓存
+## Storage 与 EffectManager 初始化
 
-Storage 引用在 `_ready()` 中通过 `_cache_storage()` 一次性获取并缓存为 `_storage`：
+Storage 引用在 `_ready()` 中通过 `_cache_storage()` 获取并缓存。同时创建 [EffectManager] 并设置上下文提供器：
 
 ```gdscript
 func _cache_storage() -> void:
-    var player: Node = get_parent()        # PropManager 是 Player 的直接子节点
+    var player: Node = get_parent()
     _storage = player.get_node_or_null("Storage") as Storage
-```
 
-一场游戏中 Storage 位置不会变化，缓存后避免每次效果执行时通过 group 查找的开销。
+func _setup_effect_manager() -> void:
+    _effect_manager = EffectManagerClass.new()
+    _effect_manager.set_context_provider(_provide_effect_context)
+    _effect_manager.register_effect(&"add_storage_item", AddStorageItemEffect.new())
+
+func _provide_effect_context() -> Dictionary:
+    return { "storage": _storage }
+```
 
 ## 效果执行
 
-`_execute_effect()` 根据 `effect_type` 从 `_effects` 字典查找对应的 [PropEffectBase] 实例并调用 `execute()`：
+信号触发时，PropManager 构建 `trigger_context` 字典（包含信号携带的所有参数），委托 [EffectManager] 执行：
 
 ```gdscript
-func _execute_effect(data: RefCounted) -> void:
-    var effect_type: StringName = data.get("effect_type") as StringName
-    var effect: PropEffectBase = _effects.get(effect_type, null) as PropEffectBase
-    effect.execute(data.get("effect_params") as Dictionary)
+func _on_crop_matured(crop_node: Node2D, grid_pos: Vector2i, crop_id: String) -> void:
+    var trigger_context := {
+        "trigger_signal": &"crop_matured",
+        "crop_node": crop_node,
+        "grid_pos": grid_pos,
+        "crop_id": crop_id,
+    }
+    _process_trigger(&"crop_matured", trigger_context)
+
+func _process_trigger(signal_name: StringName, trigger_context: Dictionary) -> void:
+    # ... 遍历绑定道具 ...
+    _effect_manager.execute(prop_data, count, trigger_context)
 ```
 
-效果实例在 `_init_effects()` 中注册：
-
-```gdscript
-func _init_effects() -> void:
-    var add_item_effect: AddStorageItemEffect = AddStorageItemEffect.new()
-    add_item_effect.init(_storage)
-    _effects[&"add_storage_item"] = add_item_effect
-```
+EffectManager 负责：合并上下文（服务引用 + 触发数据）、条件评估、效果实例查找、按类别执行。
 
 新增效果只需：
 1. 在 `scripts/items/effects/` 中创建效果类（继承 `PropEffectBase`）
-2. 在 `_init_effects()` 中注册一行
+2. 在 `_setup_effect_manager()` 中注册一行
 
 效果逻辑与 PropManager 完全解耦。
 
 ## 关联文档
 
 - [7.1道具和buff系统.md](7.1道具和buff系统.md) — 系统设计总览
+- [effect_manager.md](effect_manager.md) — EffectManager API
 - [props/sunshine_coin.md](props/sunshine_coin.md) — 阳光硬币
 - [effects/prop_effect_base.md](effects/prop_effect_base.md) — 效果基类
 - [effects/add_storage_item_effect.md](effects/add_storage_item_effect.md) — 添加物品效果
