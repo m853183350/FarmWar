@@ -14,6 +14,7 @@ class_name PropManager extends Node
 const JsonConfigLoader = preload("res://scripts/utils/json_loader.gd")
 const PropDataClass = preload("res://scripts/items/prop_data.gd")
 const EffectManagerClass = preload("res://scripts/items/effect_manager.gd")
+const ModifierRegistryClass = preload("res://scripts/items/modifier_registry.gd")
 const AddStorageItemEffectClass = preload("res://scripts/items/effects/add_storage_item_effect.gd")
 
 # ============================================================
@@ -61,6 +62,9 @@ var _storage: Storage = null
 ## 效果管理器，负责效果注册、条件评估和执行。
 var _effect_manager: RefCounted = null
 
+## 修饰器注册中心，管理 MODIFIER 类别道具的领域计算链。
+var _modifier_registry: RefCounted = null
+
 ## 信号绑定追踪。[br]
 ## 结构：[code]{ signal_name: Array[String] }[/code] — 每个信号关联的道具 ID 列表。
 var _signal_bindings: Dictionary = {}
@@ -74,8 +78,10 @@ var _connected_signals: Dictionary = {}
 # ============================================================
 
 func _ready() -> void:
+	add_to_group("prop_manager")
 	_cache_storage()
 	_setup_effect_manager()
+	_setup_modifier_registry()
 	_load_prop_library()
 	_register_debug_info()
 	print("PropManager: 初始化完成，已加载 %d 个道具定义，%d 个效果类型" % [prop_library.size(), _effect_manager.registry.size()])
@@ -112,10 +118,19 @@ func add_prop(prop_id: String) -> bool:
 	var new_count: int = current_count + 1
 	props[prop_id] = new_count
 
-	# 首次添加时连接信号
-	if current_count == 0:
-		var trigger_signal: StringName = data.get("trigger_signal") as StringName
-		_ensure_signal_connected(trigger_signal, prop_id)
+	# 根据道具类别分别处理
+	var category: String = data.get("prop_category") as String
+	match category:
+		"modifier":
+			if current_count == 0:
+				_apply_modifier(data, new_count)
+			else:
+				_update_modifier(data, new_count)
+		"instant", _:
+			# INSTANT 类别：首次添加时连接 EventBus 信号
+			if current_count == 0:
+				var trigger_signal: StringName = data.get("trigger_signal") as StringName
+				_ensure_signal_connected(trigger_signal, prop_id)
 
 	prop_added.emit(prop_id, new_count)
 	_update_debug_info()
@@ -135,13 +150,24 @@ func remove_prop(prop_id: String) -> bool:
 
 	if new_count <= 0:
 		props.erase(prop_id)
-		# 断开该道具关联的信号绑定
-		if data != null:
-			var trigger_signal: StringName = data.get("trigger_signal") as StringName
-			if not trigger_signal.is_empty():
-				_remove_signal_binding(trigger_signal, prop_id)
+		# 根据道具类别分别处理
+		var category: String = data.get("prop_category") as String if data != null else "instant"
+		match category:
+			"modifier":
+				_remove_modifier(prop_id)
+			"instant", _:
+				# 断开该道具关联的信号绑定
+				if data != null:
+					var trigger_signal: StringName = data.get("trigger_signal") as StringName
+					if not trigger_signal.is_empty():
+						_remove_signal_binding(trigger_signal, prop_id)
 	else:
 		props[prop_id] = new_count
+		# 数量减少但未归零：更新修饰器值
+		if data != null:
+			var category2: String = data.get("prop_category") as String
+			if category2 == "modifier":
+				_update_modifier(data, new_count)
 
 	prop_removed.emit(prop_id, new_count)
 	_update_debug_info()
@@ -175,6 +201,18 @@ func get_all_props() -> Array:
 			})
 	return result
 
+## 查询 MODIFIER 效果的聚合值。[br]
+## 供外部系统（如 [BaseTile]）在计算属性时调用，查询活跃 MODIFIER 道具对指定属性的影响。[br]
+## [param domain_name] 领域名称（如 "tile"、"player"）。[br]
+## [param stat_name] 属性名（如 "fertility_modifier_1"）。[br]
+## [param base_value] 基础值（无修饰器时的默认值）。[br]
+## [param context] 可选：调用者上下文，用于 target_filter 匹配。[br]
+## 返回聚合后的值。
+func query_modifier(domain_name: String, stat_name: String, base_value: float, context: Dictionary = {}) -> float:
+	if _modifier_registry == null:
+		return base_value
+	return (_modifier_registry as ModifierRegistry).calculate(domain_name, stat_name, base_value, context)
+
 # ============================================================
 # 10. 私有方法 — 初始化
 # ============================================================
@@ -204,6 +242,45 @@ func _setup_effect_manager() -> void:
 	# 注册效果类型 — 新增效果在此注册
 	var add_item_effect: RefCounted = AddStorageItemEffectClass.new()
 	_effect_manager.register_effect(&"add_storage_item", add_item_effect)
+
+## 初始化 [ModifierRegistry]。[br]
+## 创建 ModifierRegistry 实例，用于管理 MODIFIER 类别道具。
+func _setup_modifier_registry() -> void:
+	_modifier_registry = ModifierRegistryClass.new()
+
+## 应用 MODIFIER 效果（首次添加道具时）。[br]
+## 将道具的 modifier 配置注册到 [ModifierRegistry] 中。[br]
+## [param data] 道具定义数据。[br]
+## [param count] 当前持有数量。
+func _apply_modifier(data: RefCounted, count: int) -> void:
+	var modifier_config: Dictionary = data.get("modifier") as Dictionary
+	if modifier_config.is_empty():
+		push_warning("PropManager: MODIFIER 道具 '%s' 缺少 modifier 配置" % data.get("prop_id"))
+		return
+	(_modifier_registry as ModifierRegistry).register_modifier(modifier_config, data.get("prop_id") as String, count)
+	_notify_modifiers_changed()
+
+## 移除 MODIFIER 效果（道具数量归零时）。[br]
+## 从 [ModifierRegistry] 中注销该道具的所有修饰器。
+func _remove_modifier(prop_id: String) -> void:
+	(_modifier_registry as ModifierRegistry).unregister_modifier(prop_id)
+	_notify_modifiers_changed()
+
+## 更新 MODIFIER 效果（道具数量变化但未归零时）。[br]
+## 直接操作注册表并通知一次，避免 [method _remove_modifier] + [method _apply_modifier] 双重通知。
+func _update_modifier(data: RefCounted, count: int) -> void:
+	var prop_id: String = data.get("prop_id") as String
+	(_modifier_registry as ModifierRegistry).unregister_modifier(prop_id)
+	var modifier_config: Dictionary = data.get("modifier") as Dictionary
+	if not modifier_config.is_empty():
+		(_modifier_registry as ModifierRegistry).register_modifier(modifier_config, prop_id, count)
+	_notify_modifiers_changed()
+
+## 通知外部系统修饰器已变更。[br]
+## 通过 [EventBus] 广播，触发地块等系统重新计算属性。
+func _notify_modifiers_changed() -> void:
+	if EventBus:
+		EventBus.tile_modifiers_changed.emit()
 
 ## 上下文提供器 — 返回服务引用 [Dictionary]。[br]
 ## 由 [EffectManager] 在每次执行效果前调用，确保获取最新的服务引用。
@@ -447,5 +524,19 @@ func _update_debug_info() -> void:
 
 	# Storage status
 	debug_str += "\nStorage: %s\n" % ("OK" if _storage != null else "NULL")
+
+	# ModifierRegistry info
+	if _modifier_registry != null:
+		var mr: ModifierRegistry = _modifier_registry as ModifierRegistry
+		debug_str += "\nModifierRegistry (%d domains):\n" % mr.get_domain_count()
+		var active: Array[Dictionary] = mr.get_active_modifiers()
+		if active.is_empty():
+			debug_str += "  (no active modifiers)\n"
+		else:
+			for entry: Dictionary in active:
+				var md: Dictionary = entry.get("modifier_data", {}) as Dictionary
+				debug_str += "  %s x%d → %s:%s\n" % [entry.get("prop_id"), entry.get("count"), md.get("target_domains", []), md.get("stat", "?")]
+	else:
+		debug_str += "\nModifierRegistry: NULL\n"
 
 	DebugOverlay.set_entry("PropManager", debug_str)

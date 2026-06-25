@@ -28,6 +28,11 @@ const RARITY_RARE: String = "rare"
 const RARITY_EPIC: String = "epic"
 const RARITY_LEGENDARY: String = "legendary"
 
+## 道具类别常量。
+const CATEGORY_INSTANT: String = "instant"
+const CATEGORY_MODIFIER: String = "modifier"
+const CATEGORY_DURATION: String = "duration"
+
 # ============================================================
 # 5. 公开变量
 # ============================================================
@@ -63,6 +68,27 @@ var trigger_condition: Dictionary = {}
 ## 支持复合效果（一个道具多个效果）和堆叠（持有 n 个执行 n 次）。
 var effects: Array[Dictionary] = []
 
+## 道具类别。[br]
+## 可选值：[code]"instant"[/code]（默认，事件触发型）、[code]"modifier"[/code]（被动修饰型）、
+## [code]"duration"[/code]（限时持续型）。
+var prop_category: String = "instant"
+
+## 修饰器配置（仅 MODIFIER 类别道具使用）。[br]
+## 包含 target_domains、stat、value、priority、tags、target_filter 等字段。
+var modifier: Dictionary = {}
+
+## 全局排序优先级（默认 0）。[br]
+## 数值越小越先计算。
+var priority: int = 0
+
+## 前置道具 ID 列表。[br]
+## 需要持有列表中所有道具后，本道具才能生效。
+var requires: Array[String] = []
+
+## 互斥道具 ID 列表。[br]
+## 不能与列表中任何道具同时持有。
+var conflicts_with: Array[String] = []
+
 ## 分类标签数组（不可变），用于筛选和分类。
 var tags: Array[String] = []
 
@@ -85,6 +111,24 @@ func init_from_dict(data: Dictionary) -> void:
 	trigger_signal = StringName(trigger_signal_str) if not trigger_signal_str.is_empty() else &""
 
 	trigger_condition = data.get("trigger_condition", {}) as Dictionary
+
+	prop_category = data.get("prop_category", "instant") as String
+	modifier = data.get("modifier", {}) as Dictionary
+	priority = data.get("priority", 0) as int
+
+	var requires_raw = data.get("requires", [])
+	if requires_raw is Array:
+		var req_arr: Array[String] = []
+		for req in requires_raw:
+			req_arr.append(req as String)
+		requires = req_arr
+
+	var conflicts_raw = data.get("conflicts_with", [])
+	if conflicts_raw is Array:
+		var conf_arr: Array[String] = []
+		for conf in conflicts_raw:
+			conf_arr.append(conf as String)
+		conflicts_with = conf_arr
 
 	# 解析效果配置 — 兼容新旧两种格式
 	_parse_effects(data)

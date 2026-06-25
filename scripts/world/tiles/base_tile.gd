@@ -124,6 +124,13 @@ func _ready() -> void:
 	_validate_constants()
 	# 按地块位置计算并设置渲染排序 z_index
 	update_z_index()
+	# 监听 MODIFIER 道具变更，动态重新计算地块属性
+	if EventBus:
+		EventBus.tile_modifiers_changed.connect(_on_modifiers_changed)
+
+func _exit_tree() -> void:
+	if EventBus:
+		EventBus.tile_modifiers_changed.disconnect(_on_modifiers_changed)
 
 # ============================================================
 # 9. 公开方法 — 数据访问
@@ -332,6 +339,11 @@ func update_tags() -> void:
 		return
 	_tile_data.sync_tags()
 
+## 响应 MODIFIER 道具变更事件，重新计算地块属性。[br]
+## 由 [signal EventBus.tile_modifiers_changed] 触发。
+func _on_modifiers_changed() -> void:
+	update_properties()
+
 ## 重新计算并更新地块的温度、湿度、肥力属性。
 ##
 ## 计算公式见 Docs/地块系统/1.1地块系统.md。
@@ -412,13 +424,48 @@ func _calculate_moisture(world: Node2D, grid_pos: Vector2i) -> float:
 
 ## 根据肥力公式计算地块肥力。
 ##
-## 公式：[code](fertility_base + fertility_modifier_1) * fertility_multiplier + fertility_modifier_2[/code]
+## 公式：[code](fertility_base + mod1) * mult + mod2[/code]
+## 其中 mod1、mult、mod2 先取 [member TileInfo] 的静态值作为基础，
+## 再叠加 [PropManager] 中活跃 MODIFIER 道具的动态加成（通过 [ModifierRegistry] 查询）。
 func _calculate_fertility() -> float:
 	if not _tile_data:
 		return 0.0
 
-	var result := (_tile_data.fertility_base + _tile_data.fertility_modifier_1) * _tile_data.fertility_multiplier + _tile_data.fertility_modifier_2
+	var mod1: float = _query_modifier("fertility_modifier_1", _tile_data.fertility_modifier_1)
+	var mult: float = _query_modifier("fertility_multiplier", _tile_data.fertility_multiplier)
+	var mod2: float = _query_modifier("fertility_modifier_2", _tile_data.fertility_modifier_2)
+
+	var result := (_tile_data.fertility_base + mod1) * mult + mod2
 	return clampf(result, FERTILITY_MIN, FERTILITY_MAX)
+
+## 查询 MODIFIER 道具对指定属性的动态加成。[br]
+## 通过 [code]prop_manager[/code] group 找到 [PropManager]，
+## 委托其 [method PropManager.query_modifier] 查询 [ModifierRegistry]。[br]
+## 传递当前地块的上下文（tile_type 等），用于 target_filter 匹配。[br]
+## [param stat_name] 属性名（如 "fertility_modifier_1"）。[br]
+## [param default_value] 无活跃修饰器时的默认值（来自 [TileInfo]）。[br]
+## 返回聚合后的值。
+func _query_modifier(stat_name: String, default_value: float) -> float:
+	var pm: Node = get_tree().get_first_node_in_group("prop_manager") if is_inside_tree() else null
+	if pm == null:
+		return default_value
+	if not pm.has_method("query_modifier"):
+		return default_value
+	# 构建上下文字典，供 Domain 的 target_filter 匹配
+	var context: Dictionary = _build_modifier_context()
+	return pm.query_modifier("tile", stat_name, default_value, context)
+
+## 构建 MODIFIER 查询上下文字典。[br]
+## 包含当前地块的关键属性，供 [member Domain] 的 [code]target_filter[/code] 匹配。[br]
+## 当前上下文：[code]{ "tile_type": "farmland" | "dirt" | ... }[/code][br]
+## 后续可扩展 crop_id、has_building 等字段。
+func _build_modifier_context() -> Dictionary:
+	var ctx: Dictionary = {}
+	if _tile_data:
+		# 将 TileType 枚举 int 值转为小写字符串，与 JSON 中 target_filter 格式一致
+		var type_name: String = TileInfo.TileType.find_key(_tile_data.tile_type).to_lower()
+		ctx["tile_type"] = type_name
+	return ctx
 
 ## 根据热源 + 环境温度计算地块温度（预留，待季节气候系统完成后完善）。
 ##

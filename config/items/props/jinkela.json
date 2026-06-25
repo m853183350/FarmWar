@@ -1,0 +1,22 @@
+{
+	"prop_id": "jinkela",
+	"prop_name": "金坷垃",
+	"description": "全局增加所有耕地肥力 0.3。金坷垃，亩产一千八！",
+	"rarity": "uncommon",
+	"icon_path": "",
+	"max_stack": 10,
+	"prop_category": "modifier",
+	"modifier": {
+		"target_domains": ["tile"],
+		"stat": "fertility_modifier_1",
+		"value": 0.3,
+		"priority": 100,
+		"tags": ["flat"],
+		"target_filter": {
+			"tile_type": "farmland"
+		}
+	},
+	"requires": [],
+	"conflicts_with": [],
+	"tags": ["farmland", "fertility", "economy"]
+}

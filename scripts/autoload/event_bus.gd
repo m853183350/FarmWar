@@ -110,3 +110,7 @@ signal crop_matured(crop_node: Node2D, grid_pos: Vector2i, crop_id: String)
 ## 由 [ModeSelector] 发出，[TileSelector] 等系统监听以调整行为。
 ## [param mode_id] 新模式标识，如 "cursor"、"gather"、"wheat_tier1"。
 signal mode_changed(mode_id: StringName)
+
+## 地块修饰器发生变化（MODIFIER 道具添加/移除/数量变化）。
+## 由 [PropManager] 发出，[BaseTile] 等监听以重新计算地块属性。
+signal tile_modifiers_changed()
