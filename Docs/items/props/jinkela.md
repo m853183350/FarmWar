@@ -1,6 +1,8 @@
-# Jinkela（金坷垃）
+# Jinkela（金坷垃）✅ 已实现
 
-被动持有型道具。全局增加所有耕地（farmland）的肥力基础值，提升作物产量。属于 MODIFIER 类效果——持有期间持续生效，移除时自动复原。
+被动持有型 MODIFIER 道具。全局增加所有耕地（farmland）的肥力修正值1（`fertility_modifier_1`），提升作物产量。通过 [ModifierRegistry] + [Domain] 实现，持有期间持续生效，地块在计算肥力时被动查询聚合值。
+
+> 实施日期：2026-06-25 | Phase 0 + Phase 1
 
 ## 属性
 
@@ -11,67 +13,15 @@
 | `description` | 全局增加所有耕地肥力 0.3。金坷垃，亩产一千八！ | 风味文字 |
 | `rarity` | `uncommon` | 非普通稀有度 |
 | `icon_path` | （空） | 暂无图标 |
-| `max_stack` | `5` | 最多持有 5 个 |
-| `trigger_signal` | `prop_acquired` | 道具获取/失去时触发 |
-| `effect_type` | `modify_tile_stat` | 修改地块属性（MODIFIER 类别） |
-| `effect_params` | `{"target_tile_type": "farmland", "stat": "fertility_modifier_1", "delta_per_stack": 0.3}` | 每个持有数增加 farmland 地块的 fertility_modifier_1 0.3 |
-| `tags` | `["farmland", "fertility", "economy"]` | 农田类 + 肥力类 + 经济类标签 |
-
-## 效果机制
-
-金坷垃属于 **MODIFIER**（修饰效果）类别，与 sunshine_coin 的 INSTANT 类别不同——它不在游戏事件触发时执行，而是在道具持有期间持续对地块属性生效。
-
-### 肥力计算公式（来自 `BaseTile._calculate_fertility()`）
-
-```
-fertility = (fertility_base + fertility_modifier_1) × fertility_multiplier + fertility_modifier_2
-```
-
-金坷垃修改的是 `fertility_modifier_1`，即与地块基础值相加后再乘以修正倍率。这意味着**地块自身的 `fertility_multiplier` 越高，金坷垃的收益越大**。
-
-### 生效流程
-
-```
-PropManager.add_prop("jinkela")
-  → EffectManager 识别 effect_type == "modify_tile_stat"（MODIFIER 类别）
-    → 调用 ModifyTileStatEffect.on_apply(params, context)
-      → 遍历 world 中所有 tile_type == "farmland" 的地块
-        → tile.tile_data.fertility_modifier_1 += 0.3
-          → tile.update_properties()  // 重新计算 fertility
-            → tile.tile_data_changed.emit()  // 通知作物重新计算环境修正值
-
-PropManager.remove_prop("jinkela")
-  → EffectManager 识别 MODIFIER 类别
-    → 调用 ModifyTileStatEffect.on_remove(params, context)
-      → 遍历所有 farmland 地块
-        → tile.tile_data.fertility_modifier_1 -= 0.3
-          → tile.update_properties()
-```
-
-### 对作物的影响链
-
-```
-地块 fertility 增加
-  → BaseTile.tile_data_changed 信号
-    → Crop._on_tile_data_changed()
-      → Crop._recalc_modifiers()
-        → fertility_modifier = sqrt(fertility_factor × tile_fertility)
-          → yield_modifier = 1.0 × fertility_modifier × independent_yield_modifier
-            → 收获时实际产出 = base_amount × yield_modifier
-```
-
-## 堆叠行为
-
-- 每持有一个 `jinkela`，所有 farmland 地块的 `fertility_modifier_1` 增加 `0.3`
-- 持有 3 个 → 每个 farmland 地块 +0.9 玩家肥力修正值1
-- 最大堆叠数 10 → 最多 +3 玩家肥力修正值1
-
-## 对新地块的自动应用
-
-当玩家持有金坷垃时，新转化/生成的 farmland 地块也需要自动应用修正值。这通过以下机制实现：
-
-1. **地块转化时**（如 DIRT → FARMLAND）：`TileActions` 调用 `update_properties()` 之前，检查 PropManager 中持有 jinkela 并预先设置 `fertility_modifier_1`
-2. **地块生成时**：`TerrainGenerator` 创建完地块后，由 PropManager 统一遍历应用
+| `max_stack` | `10` | 最多持有 10 个 |
+| `prop_category` | `modifier` | **MODIFIER 类别**（非 INSTANT） |
+| `modifier.target_domains` | `["tile"]` | 影响地块领域 |
+| `modifier.stat` | `fertility_modifier_1` | 修改肥力修正值1 |
+| `modifier.value` | `0.3` | 每个持有数增加的量 |
+| `modifier.priority` | `100` | 排序优先级 |
+| `modifier.tags` | `["flat"]` | 固定值加成（result += value） |
+| `modifier.target_filter` | `{"tile_type": "farmland"}` | **仅对 farmland 地块生效** |
+| `tags` | `["farmland", "fertility", "economy"]` | 分类标签 |
 
 ## 配置文件
 
@@ -83,61 +33,115 @@ PropManager.remove_prop("jinkela")
     "prop_name": "金坷垃",
     "description": "全局增加所有耕地肥力 0.3。金坷垃，亩产一千八！",
     "rarity": "uncommon",
-    "icon_path": "",
     "max_stack": 10,
-    "trigger_signal": "prop_acquired",
-    "trigger_condition": {},
-    "effect_type": "modify_tile_stat",
-    "effect_params": {
-        "target_tile_type": "farmland",
+    "prop_category": "modifier",
+    "modifier": {
+        "target_domains": ["tile"],
         "stat": "fertility_modifier_1",
-        "delta_per_stack": 0.3
+        "value": 0.3,
+        "priority": 100,
+        "tags": ["flat"],
+        "target_filter": { "tile_type": "farmland" }
     },
+    "requires": [],
+    "conflicts_with": [],
     "tags": ["farmland", "fertility", "economy"]
 }
 ```
 
+## 效果机制
+
+金坷垃属于 **MODIFIER** 类别，与 sunshine_coin 的 INSTANT 类别不同——它不在游戏事件触发时执行，而是注册到 [ModifierRegistry] 的 "tile" [Domain] 中，地块计算肥力时被动查询聚合值。
+
+### 生效流程
+
+```
+PropManager.add_prop("jinkela")
+  → match prop_category: "modifier"
+    → _apply_modifier(data, count)
+      → ModifierRegistry.register_modifier(modifier_config, "jinkela", count)
+        → _ensure_domain("tile")
+        → Domain.add_modifier(modifier_config, "jinkela", count)
+          → value = 0.3 × count, 加入 _chain
+      → _notify_modifiers_changed()
+        → EventBus.tile_modifiers_changed.emit()
+          → 所有 BaseTile._on_modifiers_changed()
+            → update_properties()
+              → _calculate_fertility()
+```
+
+### 查询时（地块肥力计算）
+
+```
+BaseTile._calculate_fertility()
+  → _build_modifier_context()  →  {"tile_type": "farmland"}
+  → _query_modifier("fertility_modifier_1", 0.0)
+    → PropManager.query_modifier("tile", "fertility_modifier_1", 0.0, context)
+      → ModifierRegistry.calculate("tile", "fertility_modifier_1", 0.0, context)
+        → Domain.calculate("fertility_modifier_1", 0.0, context)
+          → _matches_filter() → tile_type == "farmland" ✓
+          → flat: result += 0.3 × count
+          → return 0.3 × count
+    → mod1 = 0.3 × count
+  → fertility = (fertility_base + mod1) × mult + mod2
+```
+
+### 肥力计算公式
+
+```
+fertility = (fertility_base + fertility_modifier_1) × fertility_multiplier + fertility_modifier_2
+```
+
+金坷垃修改的是 `fertility_modifier_1`，即与地块基础值相加后再乘以修正倍率。
+例如 farmland 的 `fertility_base = 0.8`，持 1 个金坷垃时：
+- `fertility_modifier_1 = 0.0 + 0.3 = 0.3`
+- `fertility = (0.8 + 0.3) × 1.0 + 0.0 = 1.1`
+
+### target_filter 过滤
+
+金坷垃的 `target_filter: {"tile_type": "farmland"}` 确保：
+- farmland 地块 → 获得加成 ✅
+- dirt / stone / ocean 地块 → 不受影响 ✅
+
+过滤由 [Domain._matches_filter()] 在计算时根据 BaseTile 传入的 context 自动完成。
+
+## 堆叠行为
+
+- 持 1 个 → `fertility_modifier_1` +0.3 → farmland 肥力 = 1.1
+- 持 3 个 → `fertility_modifier_1` +0.9 → farmland 肥力 = 1.7
+- 持 10 个（上限）→ `fertility_modifier_1` +3.0 → farmland 肥力 = 3.8
+
+## 对作物的影响链
+
+```
+地块 fertility 增加
+  → BaseTile.update_properties() 更新 fertility
+    → Crop._on_tile_data_changed() 重新计算生长速度
+      → 收获时 yield_modifier 基于 fertility 计算
+```
+
 ## 实现状态
-
-**当前状态：已规划，待实现。**
-
-实现此道具依赖以下工作：
 
 | 依赖项 | 状态 | 说明 |
 |--------|------|------|
-| `ModifyTileStatEffect` 效果类 | ❌ 待创建 | 需要在 `scripts/items/effects/` 中创建，继承 `PropEffectBase`，类别为 MODIFIER |
-| `prop_acquired` 信号 | ❌ 待添加 | PropManager 需要在添加/移除 MODIFIER 类道具时触发 apply/remove |
-| 新地块自动应用 | ❌ 待实现 | 地块转化/生成时需检查已持有的 MODIFIER 道具 |
-| MODIFIER 效果生命周期 | ⚠️ 基类已支持 | `PropEffectBase.on_apply()` / `on_remove()` 已定义，需 EffectManager 调度 |
-
-### 效果类骨架（待实现）
-
-```gdscript
-# scripts/items/effects/modify_tile_stat_effect.gd
-class_name ModifyTileStatEffect extends PropEffectBase
-
-func get_category() -> EffectCategory:
-    return EffectCategory.MODIFIER
-
-func on_apply(params: Dictionary, context: Dictionary) -> void:
-    var target_type: String = params.get("target_tile_type", "")
-    var stat: String = params.get("stat", "")
-    var delta: float = params.get("delta_per_stack", 0.0)
-    # 遍历所有匹配地块，修改 tile_data[stat] += delta
-    # 调用 tile.update_properties()
-    # 缓存已修改的地块列表，供 on_remove 使用
-
-func on_remove(params: Dictionary, context: Dictionary) -> void:
-    # 反向操作：tile_data[stat] -= delta
-    # 调用 tile.update_properties()
-```
+| Domain 类 | ✅ 已实现 | `scripts/items/domain.gd` |
+| ModifierRegistry 类 | ✅ 已实现 | `scripts/items/modifier_registry.gd` |
+| PropData 扩展 | ✅ 已实现 | 新增 `prop_category`、`modifier` 等字段 |
+| PropManager MODIFIER 路由 | ✅ 已实现 | `add_prop`/`remove_prop` 中的 `match category` 分支 |
+| target_filter 机制 | ✅ 已实现 | Domain 链全链路透传 context 过滤 |
+| BaseTile 接入 | ✅ 已实现 | `_calculate_fertility()` 查询 ModifierRegistry |
+| tile_modifiers_changed 信号 | ✅ 已实现 | 修饰器变更后触发地块重算 |
+| DebugUI 展示 | ✅ 已实现 | F3 面板显示活跃修饰器 |
+| 新地块自动应用 | ✅ 已实现 | `update_properties()` 调用时实时查询 |
+| 已存在地块动态更新 | ✅ 已实现 | EventBus 信号触发重算 |
 
 ## 关联文档
 
 - [7.1道具和buff系统.md](../7.1道具和buff系统.md) — 系统设计总览
 - [../prop_manager.md](../prop_manager.md) — PropManager API
+- [../modifier_registry.md](../modifier_registry.md) — ModifierRegistry API
+- [../domain.md](../domain.md) — Domain API
 - [../effect_manager.md](../effect_manager.md) — EffectManager API
-- [../effects/prop_effect_base.md](../effects/prop_effect_base.md) — 效果基类（含 MODIFIER 类别定义）
-- [props/sunshine_coin.md](sunshine_coin.md) — 阳光硬币（INSTANT 类别参考）
-- [../../world/base_tile.md](../../world/base_tile.md) — BaseTile 肥力计算公式
-- [../../crops/crop.md](../../crops/crop.md) — 作物环境修正值计算
+- [sunshine_coin.md](sunshine_coin.md) — 阳光硬币（INSTANT 类别参考）
+- [../../world/tiles/base_tile.gd](../../scripts/world/tiles/base_tile.gd) — 地块肥力计算公式
+- [../../0624效果系统优化方案.md](../../0624效果系统优化方案.md) — 系统设计文档
