@@ -34,6 +34,7 @@ const FRAME_HEIGHT: int = 16
 
 ## 湿度衰减强度 — 用于过湿时的边际递减计算。
 const MOISTURE_DECAY_STRENGTH: float = 2.0
+const TileInfoClass = preload("res://scripts/world/tile_data.gd")
 
 # ============================================================
 # 1. 信号
@@ -390,6 +391,7 @@ func _recalc_modifiers() -> void:
 		moisture_modifier = 1.0
 		temperature_modifier = 1.0
 		fertility_modifier = 1.0
+		independent_speed_modifier = _query_growth_speed_mod()
 		speed_modifier = 1.0 * independent_speed_modifier
 		yield_modifier = 1.0 * independent_yield_modifier
 		return
@@ -450,9 +452,33 @@ func _recalc_modifiers() -> void:
 	# 计算肥力修正值
 	fertility_modifier = sqrt(fertility_factor * tile_fertility)
 
+	# 从 ModifierRegistry 获取独立速度修正值（道具/Buff 系统）
+	independent_speed_modifier = _query_growth_speed_mod()
+
 	# 综合修正值
 	speed_modifier = moisture_modifier * temperature_modifier * independent_speed_modifier
 	yield_modifier = 1.0 * fertility_modifier * independent_yield_modifier
+
+## 从 [ModifierRegistry] 查询生长速度修正值。[br]
+## 通过 [code]prop_manager[/code] group 找到 [PropManager]，
+## 委托其 [method PropManager.query_modifier] 查询活跃 DURATION/MODIFIER 道具的聚合加成。[br]
+## 无活跃修饰器时返回 1.0（无影响）。[br]
+## 返回聚合后的独立速度修正值。
+func _query_growth_speed_mod() -> float:
+	var pm: Node = get_tree().get_first_node_in_group("prop_manager") if is_inside_tree() else null
+	if pm == null:
+		return 1.0
+	if not pm.has_method("query_modifier"):
+		return 1.0
+	# 构建上下文（与 BaseTile._build_modifier_context 保持一致）
+	var ctx: Dictionary = {}
+	if tile and is_instance_valid(tile) and tile.has_method("get_tile_data"):
+		var td = tile.get_tile_data()
+		if td:
+			var type_name: String = TileInfoClass.TileType.find_key(td.tile_type).to_lower()
+			if not type_name.is_empty():
+				ctx["tile_type"] = type_name
+	return pm.query_modifier("tile", "growth_speed_mod", 1.0, ctx)
 
 ## 响应地块数据变化信号（[signal BaseTile.tile_data_changed]）。
 ## 当水分、肥力等属性因外部因素（灌溉、道具等）更新时，重新计算环境修正值。

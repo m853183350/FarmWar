@@ -340,9 +340,12 @@ func update_tags() -> void:
 	_tile_data.sync_tags()
 
 ## 响应 MODIFIER 道具变更事件，重新计算地块属性。[br]
-## 由 [signal EventBus.tile_modifiers_changed] 触发。
+## 由 [signal EventBus.tile_modifiers_changed] 触发。[br]
+## 仅重算肥力（受 MODIFIER 影响的唯一属性），水分和温度取决于标签传播，不受 MODIFIER 影响。
 func _on_modifiers_changed() -> void:
-	update_properties()
+	if not _tile_data:
+		return
+	_tile_data.fertility = _calculate_fertility()
 
 ## 重新计算并更新地块的温度、湿度、肥力属性。
 ##

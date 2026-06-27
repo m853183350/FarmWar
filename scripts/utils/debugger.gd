@@ -47,6 +47,7 @@ func _ready() -> void:
 	# UnitManager.spawn_worker(Vector2i(5, 5))
 	player.get_node("PropManager").add_prop("sunshine_coin")
 	player.get_node("PropManager").add_prop("jinkela")
+	player.get_node("PropManager").add_prop("emperor_golden_hoe")
 	
 	# UnitManager.spawn_worker(Vector2i(5, 3))
 	# UnitManager.spawn_worker(Vector2i(5, 4))

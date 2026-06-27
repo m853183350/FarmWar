@@ -76,6 +76,8 @@ The game is divided into **in-match systems** and **meta-game systems**:
 - Scene root node type must match its script's `extends` type.
 - One Scene can only have 1 script. If there's multiple scripts, use child node.
 - If an object has more than 5 attributes, use json file in /config
+- All files must use Tab indentation (width: 4 spaces)
+- No trailing whitespace
 
 **Class-internal declaration order:**
 1. Signals

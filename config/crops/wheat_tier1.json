@@ -19,19 +19,19 @@
 	"growth_stages": [
 		{
 			"name": "stage_0",
-			"tick_duration": 20,
+			"tick_duration": 130,
 			"frame_x": 0,
 			"passable": true
 		},
 		{
 			"name": "stage_1",
-			"tick_duration": 20,
+			"tick_duration": 130,
 			"frame_x": 8,
 			"passable": true
 		},
 		{
 			"name": "stage_2",
-			"tick_duration": 20,
+			"tick_duration": 130,
 			"frame_x": 16,
 			"passable": true
 		},

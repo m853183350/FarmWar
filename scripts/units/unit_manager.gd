@@ -31,7 +31,7 @@ signal task_assigned(task: TaskData, worker_id: StringName)
 
 ## 农场工人场景路径。
 const FARM_WORKER_SCENE: String = "res://scenes/units/player_units/farm_worker.tscn"
-const debug_print_flag: bool = true
+const debug_print_flag: bool = false
 
 # ============================================================
 # 5. 公开变量

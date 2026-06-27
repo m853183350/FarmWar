@@ -1,0 +1,34 @@
+{
+	"prop_id": "emperor_golden_hoe",
+	"prop_name": "皇帝的金锄头",
+	"description": "当有土地被翻耕时，所有作物获得 100% 生长速度加成，持续 3 秒。",
+	"rarity": "legendary",
+	"max_stack": 1,
+	"prop_category": "duration",
+
+	"trigger_signal": "tile_action_completed",
+	"trigger_condition": {
+		"action": "plow"
+	},
+
+	"effects": [
+		{
+			"type": "apply_timed_modifier",
+			"params": {
+				"modifier_config": {
+					"target_domains": ["tile"],
+					"stat": "growth_speed_mod",
+					"value": 1.0,
+					"priority": 50,
+					"tags": ["multiplicative"],
+					"target_filter": {}
+				},
+				"duration_ticks": 60
+			}
+		}
+	],
+
+	"requires": [],
+	"conflicts_with": [],
+	"tags": ["farmland", "growth_speed", "timed", "legendary"]
+}

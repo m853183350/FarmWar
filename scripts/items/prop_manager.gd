@@ -16,6 +16,7 @@ const PropDataClass = preload("res://scripts/items/prop_data.gd")
 const EffectManagerClass = preload("res://scripts/items/effect_manager.gd")
 const ModifierRegistryClass = preload("res://scripts/items/modifier_registry.gd")
 const AddStorageItemEffectClass = preload("res://scripts/items/effects/add_storage_item_effect.gd")
+const ApplyTimedModifierEffectClass = preload("res://scripts/items/effects/apply_timed_modifier_effect.gd")
 
 # ============================================================
 # 1. 信号
@@ -38,6 +39,7 @@ const PROP_CONFIG_DIR: String = "res://config/items/props/"
 const TRIGGER_CROP_MATURED: StringName = &"crop_matured"
 const TRIGGER_CROP_HARVESTED: StringName = &"crop_harvested"
 const TRIGGER_CROP_STAGE_CHANGED: StringName = &"crop_stage_changed"
+const TRIGGER_TILE_ACTION_COMPLETED: StringName = &"tile_action_completed"
 
 # ============================================================
 # 5. 公开变量
@@ -87,6 +89,9 @@ func _ready() -> void:
 	print("PropManager: 初始化完成，已加载 %d 个道具定义，%d 个效果类型" % [prop_library.size(), _effect_manager.registry.size()])
 
 func _exit_tree() -> void:
+	# 清理所有活跃 DURATION 效果（调 on_remove 注销临时修饰器）
+	if _effect_manager != null:
+		_effect_manager.cleanup_all_durations()
 	_disconnect_all_signals()
 
 # ============================================================
@@ -126,6 +131,11 @@ func add_prop(prop_id: String) -> bool:
 				_apply_modifier(data, new_count)
 			else:
 				_update_modifier(data, new_count)
+		"duration":
+			# DURATION 类别：与 INSTANT 相同，首次添加时连接 EventBus 信号
+			if current_count == 0:
+				var trigger_signal: StringName = data.get("trigger_signal") as StringName
+				_ensure_signal_connected(trigger_signal, prop_id)
 		"instant", _:
 			# INSTANT 类别：首次添加时连接 EventBus 信号
 			if current_count == 0:
@@ -155,6 +165,13 @@ func remove_prop(prop_id: String) -> bool:
 		match category:
 			"modifier":
 				_remove_modifier(prop_id)
+			"duration":
+				# 清理所有活跃 DURATION 效果并断开信号
+				_effect_manager.cleanup_duration_for_prop(prop_id)
+				if data != null:
+					var trigger_signal: StringName = data.get("trigger_signal") as StringName
+					if not trigger_signal.is_empty():
+						_remove_signal_binding(trigger_signal, prop_id)
 			"instant", _:
 				# 断开该道具关联的信号绑定
 				if data != null:
@@ -168,6 +185,7 @@ func remove_prop(prop_id: String) -> bool:
 			var category2: String = data.get("prop_category") as String
 			if category2 == "modifier":
 				_update_modifier(data, new_count)
+			# DURATION 数量减少：不终止已触发的效果，仅影响后续触发时的 count
 
 	prop_removed.emit(prop_id, new_count)
 	_update_debug_info()
@@ -214,6 +232,20 @@ func query_modifier(domain_name: String, stat_name: String, base_value: float, c
 	return (_modifier_registry as ModifierRegistry).calculate(domain_name, stat_name, base_value, context)
 
 # ============================================================
+# 9. 公开方法 — 修饰器注册中心访问
+# ============================================================
+
+## 获取 ModifierRegistry 引用。[br]
+## 供效果类（如 [ApplyTimedModifierEffect]）在 on_apply/on_remove 中访问。
+func get_modifier_registry() -> ModifierRegistry:
+	return _modifier_registry as ModifierRegistry
+
+## 通知外部系统修饰器已变更。[br]
+## 供效果类在注册/注销临时修饰器后调用，触发地块等系统重算。
+func notify_modifiers_changed() -> void:
+	_notify_modifiers_changed()
+
+# ============================================================
 # 10. 私有方法 — 初始化
 # ============================================================
 
@@ -239,9 +271,15 @@ func _setup_effect_manager() -> void:
 	# 设置上下文提供器 — 返回效果执行时需要的服务引用
 	_effect_manager.set_context_provider(_provide_effect_context)
 
+	# 设置修饰器变更通知回调 — DURATION 效果到期/清理时统一通知
+	_effect_manager.set_modifiers_changed_callback(_notify_modifiers_changed)
+
 	# 注册效果类型 — 新增效果在此注册
 	var add_item_effect: RefCounted = AddStorageItemEffectClass.new()
 	_effect_manager.register_effect(&"add_storage_item", add_item_effect)
+
+	var timed_modifier_effect: RefCounted = ApplyTimedModifierEffectClass.new()
+	_effect_manager.register_effect(&"apply_timed_modifier", timed_modifier_effect)
 
 ## 初始化 [ModifierRegistry]。[br]
 ## 创建 ModifierRegistry 实例，用于管理 MODIFIER 类别道具。
@@ -287,6 +325,7 @@ func _notify_modifiers_changed() -> void:
 func _provide_effect_context() -> Dictionary:
 	return {
 		"storage": _storage,
+		"prop_manager": self,
 	}
 
 ## 从 [constant PROP_CONFIG_DIR] 加载所有道具 JSON 定义文件。
@@ -411,6 +450,8 @@ func _get_signal_handler(signal_name: StringName) -> Callable:
 			return _on_crop_harvested
 		TRIGGER_CROP_STAGE_CHANGED:
 			return _on_crop_stage_changed
+		TRIGGER_TILE_ACTION_COMPLETED:
+			return _on_tile_action_completed
 		_:
 			return Callable()
 
@@ -454,6 +495,21 @@ func _on_crop_stage_changed(crop_node: Node2D, grid_pos: Vector2i, crop_id: Stri
 	}
 	_process_trigger(TRIGGER_CROP_STAGE_CHANGED, trigger_context)
 
+## 响应 [signal EventBus.tile_action_completed] 信号。[br]
+## 地块操作完成时调用（翻耕/挖掘等）。[br]
+## [param action] 操作类型（"plow"、"dig" 等）。[br]
+## [param tiles] 操作的地块网格坐标数组。[br]
+## [param count] 成功转化的数量。
+func _on_tile_action_completed(action: StringName, tiles: Array, count: int) -> void:
+	print("PropManager: 收到 tile_action_completed — action=%s, count=%d" % [action, count])
+	var trigger_context: Dictionary = {
+		"trigger_signal": TRIGGER_TILE_ACTION_COMPLETED,
+		"action": action,
+		"tiles": tiles,
+		"count": count,
+	}
+	_process_trigger(TRIGGER_TILE_ACTION_COMPLETED, trigger_context)
+
 ## 对指定信号关联的所有道具执行效果。[br]
 ## 委托给 [EffectManager] 处理效果查找、条件评估和执行。[br]
 ## 持有多个相同道具时效果叠加（执行 count 次）。[br]
@@ -472,11 +528,29 @@ func _process_trigger(signal_name: StringName, trigger_context: Dictionary) -> v
 		if data == null:
 			continue
 
+		# 检查 trigger_condition（如 {action: "plow"}）
+		if not _match_trigger_condition(data, trigger_context):
+			continue
+
 		var prop_name: String = data.get("prop_name") as String
 		print("PropManager: 触发道具 '%s'（信号: %s, 持有: %d）" % [prop_name, signal_name, count])
 
 		# 委托给 EffectManager 执行效果
 		_effect_manager.execute(data, count, trigger_context)
+
+## 检查道具的 trigger_condition 是否与触发上下文匹配。[br]
+## 若道具未配置 trigger_condition，默认匹配（返回 true）。[br]
+## 否则，trigger_condition 的所有键值对必须与 trigger_context 一致。
+func _match_trigger_condition(data: RefCounted, trigger_context: Dictionary) -> bool:
+	var condition: Dictionary = data.get("trigger_condition") as Dictionary
+	if condition.is_empty():
+		return true
+	for key: String in condition:
+		var expected = condition[key]
+		var actual = trigger_context.get(key)
+		if actual != expected:
+			return false
+	return true
 
 # ============================================================
 # 10. 私有方法 — 调试
@@ -538,5 +612,24 @@ func _update_debug_info() -> void:
 				debug_str += "  %s x%d → %s:%s\n" % [entry.get("prop_id"), entry.get("count"), md.get("target_domains", []), md.get("stat", "?")]
 	else:
 		debug_str += "\nModifierRegistry: NULL\n"
+
+	# DurationTracker info
+	if _effect_manager != null:
+		var active_durs: Array[Dictionary] = _effect_manager.get_active_durations()
+		debug_str += "\nDurationTracker (%d active):\n" % active_durs.size()
+		if active_durs.is_empty():
+			debug_str += "  (none)\n"
+		else:
+			for entry: Dictionary in active_durs:
+				var total: int = entry.get("total_ticks", 0) as int
+				var remaining: int = entry.get("remaining_ticks", 0) as int
+				var pct: int = int(float(remaining) / float(total) * 100.0) if total > 0 else 0
+				debug_str += "  [%s] %s: %d/%d ticks (%d%%)\n" % [
+					entry.get("prop_id"),
+					entry.get("effect_type"),
+					remaining,
+					total,
+					pct,
+				]
 
 	DebugOverlay.set_entry("PropManager", debug_str)

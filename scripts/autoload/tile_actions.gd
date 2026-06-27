@@ -179,7 +179,7 @@ func plant_crop(tiles: Array, crop_id: String, world_override: Node2D = null) ->
 			count += 1
 
 	if count > 0:
-		print("TileActions: 种植完成，种植了 %d 株 %s" % [count, crop_id])
+		# print("TileActions: 种植完成，种植了 %d 株 %s" % [count, crop_id])
 		if notify_on_action and EventBus:
 			EventBus.tile_action_completed.emit("plant", tiles, count)
 

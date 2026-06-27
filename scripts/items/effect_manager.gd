@@ -14,6 +14,7 @@
 class_name EffectManager extends RefCounted
 
 const PropEffectBaseClass = preload("res://scripts/items/effects/prop_effect_base.gd")
+const DurationTrackerClass = preload("res://scripts/items/duration_tracker.gd")
 
 # ============================================================
 # 5. 公开变量
@@ -32,6 +33,14 @@ var registry: Dictionary = {}
 ## 返回值应为 [Dictionary]，如 [code]{ "storage": Storage, ... }[/code]。
 var _context_provider: Callable = Callable()
 
+## DURATION 效果调度器。[br]
+## 管理所有限时效果的生命周期：注册 → 计时 → 到期清理。
+var _duration_tracker: RefCounted = DurationTrackerClass.new()
+
+## 修饰器变更通知回调。[br]
+## 由 [PropManager] 设置，在 DURATION 效果生命周期变更时调用。
+var _modifiers_changed_callback: Callable = Callable()
+
 # ============================================================
 # 9. 公开方法 — 注册
 # ============================================================
@@ -40,6 +49,12 @@ var _context_provider: Callable = Callable()
 ## [param provider] 无参 Callable，返回 [Dictionary] 包含服务引用。
 func set_context_provider(provider: Callable) -> void:
 	_context_provider = provider
+
+## 设置修饰器变更通知回调。[br]
+## [param cb] 无参 Callable，在 DURATION 效果到期/清理时调用。
+func set_modifiers_changed_callback(cb: Callable) -> void:
+	_modifiers_changed_callback = cb
+	(_duration_tracker as DurationTracker).set_notify_callback(cb)
 
 ## 注册一个效果实例。[br]
 ## 相同 [param effect_type] 的后续注册会覆盖之前的实例。[br]
@@ -90,7 +105,44 @@ func execute(prop_data: RefCounted, count: int, trigger_context: Dictionary) -> 
 	# 3. 逐个执行效果
 	for effect_entry in effects:
 		var effect_entry_dict: Dictionary = effect_entry as Dictionary
-		_execute_single_effect(effect_entry_dict, count, context, prop_data)
+		# 注入来源信息（复制一份 params，不修改原始配置）
+		var original_params: Dictionary = effect_entry_dict.get("params", {}) as Dictionary
+		var augmented_entry: Dictionary = effect_entry_dict.duplicate()
+		var augmented_params: Dictionary = original_params.duplicate()
+		augmented_params["prop_id"] = prop_data.get("prop_id")
+		augmented_params["count"] = count
+		augmented_entry["params"] = augmented_params
+		_execute_single_effect(augmented_entry, count, context, prop_data)
+
+# ============================================================
+# 9. 公开方法 — DURATION 生命周期
+# ============================================================
+
+## 清理指定道具的所有活跃 DURATION 效果。[br]
+## 当道具被移除时由 [PropManager] 调用。[br]
+## 返回清理的数量。
+func cleanup_duration_for_prop(prop_id: String) -> int:
+	var count: int = (_duration_tracker as DurationTracker).unregister_by_prop(prop_id)
+	# 通知外部系统重算
+	if count > 0 and _modifiers_changed_callback.is_valid():
+		_modifiers_changed_callback.call()
+	return count
+
+## 获取所有活跃 DURATION 效果（调试面板用）。
+func get_active_durations() -> Array[Dictionary]:
+	return (_duration_tracker as DurationTracker).get_all_active()
+
+## 清理所有活跃 DURATION 效果。[br]
+## 在场景切换/游戏结束时由 [PropManager] 调用。
+func cleanup_all_durations() -> void:
+	for entry: Dictionary in (_duration_tracker as DurationTracker).get_all_active():
+		var effect_instance: PropEffectBase = entry["effect_instance"] as PropEffectBase
+		var params: Dictionary = entry["params"] as Dictionary
+		var context: Dictionary = entry["context"] as Dictionary
+		effect_instance.on_remove(params, context)
+		# 断开旧 tracker 的 TickSystem 连接，再重建
+		(_duration_tracker as DurationTracker).disconnect_tick()
+		_duration_tracker = DurationTrackerClass.new()
 
 # ============================================================
 # 10. 私有方法 — 上下文
@@ -168,5 +220,21 @@ func _execute_single_effect(effect_entry: Dictionary, count: int, context: Dicti
 			effect_instance.on_apply(params, context)
 
 		PropEffectBase.EffectCategory.DURATION:
-			# 持续效果：调用 on_apply，到期后由外部调用 on_remove
+			# 持续效果：先清理同道具旧效果（刷新策略），再 on_apply + 注册到 DurationTracker
+			var prop_id: String = prop_data.get("prop_id") as String
+			var duration_ticks: int = params.get("duration_ticks", 0) as int
+
+			# 刷新策略：先终止同道具的旧实例（若存在），再创建新实例
+			# 注意：unregister_by_prop 不触发 modifiers_changed 通知（由本方法末尾统一通知）
+			(_duration_tracker as DurationTracker).unregister_by_prop(prop_id)
+
+			# on_apply 让效果立即生效（如注册临时修饰器到 ModifierRegistry）
 			effect_instance.on_apply(params, context)
+
+			# 注册到 DurationTracker，到期时自动调用 on_remove
+			if duration_ticks > 0:
+				(_duration_tracker as DurationTracker).register(effect_instance, params, context, duration_ticks, prop_id)
+
+			# 统一通知外部系统重算（仅一次，避免 unregister_by_prop + on_apply 双重通知）
+			if _modifiers_changed_callback.is_valid():
+				_modifiers_changed_callback.call()
