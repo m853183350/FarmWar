@@ -179,14 +179,17 @@ func _exit_tree() -> void:
 	if PathfindingManager and PathfindingManager.path_ready.is_connected(_on_path_ready):
 		PathfindingManager.path_ready.disconnect(_on_path_ready)
 
-func _process(_delta: float) -> void:
-	# 画面插值：在两帧 tick 位置之间平滑过渡
-	# 只有当 tick 驱动的 _next_tick_position 与 _prev_tick_position 不同时才需要插值
-	if state == UnitState.MOVING or _prev_tick_position.distance_to(_next_tick_position) > 0.1:
-		# 计算插值因子：基于自上次 tick 以来的时间比例
-		# 简单方式：直接设置到 next 位置，视觉上也足够流畅（tick 间隔仅 50ms）
-		# 复杂方式（更平滑）：在 _process 中每帧做 lerp
-		global_position = global_position.lerp(_next_tick_position, 0.1)
+func _process(delta: float) -> void:
+	# 画面插值：将渲染位置在 tick 逻辑位置之间平滑过渡。
+	# tick 以 20Hz 运行，仅更新逻辑位置（grid_position / _next_tick_position），
+	# 不再直接写入 global_position。_process 以显示刷新率运行，
+	# 用 move_toward 以单位移动速度追赶逻辑目标，填补 tick 之间的帧。
+	var need_interp: bool = state == UnitState.MOVING or _prev_tick_position.distance_squared_to(_next_tick_position) > 0.01
+	if not need_interp:
+		return
+	var render_speed: float = move_speed * TILE_SIZE
+	global_position = global_position.move_toward(_next_tick_position, render_speed * delta)
+	update_z_index()
 
 # ============================================================
 # 9. 公开方法 — 状态
@@ -372,13 +375,39 @@ func _direct_move(_delta: float) -> void:
 	if move_dir.x != 0.0:
 		facing_direction = Vector2(signf(move_dir.x), 0.0)
 
-	# 同步全局位置
-	global_position = grid_position
+	# 不直接设置 global_position —— 由 _process 负责画面插值
 	update_z_index()
+
+## 跳过单位已经路过的路径点。
+##
+## 当异步寻路结果在 _direct_move 之后才到达时，路径的起点仍是出发地块，
+## 而 grid_position 已经向前移动了。本方法将 _path_index 推进到
+## 单位当前位置之后的第一个路径点，避免"先回退再前进"的抖动。
+func _skip_passed_waypoints() -> void:
+	if _move_path.is_empty():
+		return
+	# 路径点按离起点的距离单调递增（A* 网格寻路保证）。
+	# 若某路径点离起点的距离 < 单位当前位置离起点的距离，说明单位已路过该点。
+	var start_wp: Vector2 = _move_path[0]
+	var dist_from_start_sq: float = grid_position.distance_squared_to(start_wp)
+	while _path_index + 1 < _move_path.size():
+		var wp: Vector2 = _move_path[_path_index]
+		if wp.distance_squared_to(start_wp) < dist_from_start_sq:
+			_path_index += 1
+		else:
+			break
 
 ## 沿 _move_path 路径点依次移动。
 ## 包含动态避障检测：子目标地块变为不可通过时触发重新寻路。
 func _follow_path(_delta: float) -> void:
+	if _path_index >= _move_path.size():
+		return
+
+	# 跳过单位已经路过的路径点。
+	# 异步寻路在 _direct_move 之后才返回路径时，路径起点是原始的出发地块，
+	# 而单位已经通过 _direct_move 向前移动了一段距离。若不跳过已过的点，
+	# 单位会先朝后方的路径起点回退，造成画面抖动。
+	_skip_passed_waypoints()
 	if _path_index >= _move_path.size():
 		return
 
@@ -429,8 +458,7 @@ func _follow_path(_delta: float) -> void:
 	if move_dir.x != 0.0:
 		facing_direction = Vector2(signf(move_dir.x), 0.0)
 
-	# 同步全局位置
-	global_position = grid_position
+	# 不直接设置 global_position —— 由 _process 负责画面插值
 	update_z_index()
 
 ## 尝试寻路到目标位置，通过 PathfindingManager 异步请求。
