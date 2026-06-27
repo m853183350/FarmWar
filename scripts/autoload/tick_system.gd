@@ -42,7 +42,7 @@ const THREAD_SLEEP_STEP_MSEC: int = 10
 # ============================================================
 
 ## 启动时是否自动开始 tick。
-@export var auto_start: bool = true
+@export var auto_start: bool = false
 
 # ============================================================
 # 5. 公开变量

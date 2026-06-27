@@ -1,0 +1,46 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/game/game_root.gd" id="1_root"]
+[ext_resource type="PackedScene" uid="uid://cd0a2c40o4v74" path="res://scenes/world/world.tscn" id="2_world"]
+[ext_resource type="Script" path="res://scripts/world/camera_controller.gd" id="3_camera"]
+[ext_resource type="Script" path="res://scripts/ui/tick_counter_label.gd" id="4_tick_counter"]
+[ext_resource type="Script" path="res://scripts/ui/tile_selector.gd" id="5_tile_selector"]
+[ext_resource type="Script" path="res://scripts/player/player.gd" id="6_player"]
+[ext_resource type="PackedScene" uid="uid://24r07tk425qq" path="res://scenes/ui/components/mode_selector.tscn" id="7_mode_selector"]
+
+[node name="Node2D" type="Node2D"]
+script = ExtResource("1_root")
+
+[node name="world" parent="." instance=ExtResource("2_world")]
+map_width = 50
+map_height = 50
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(968, 544)
+script = ExtResource("3_camera")
+edge_margin = 40
+
+[node name="TickCounterLabel" type="Label" parent="."]
+visible = false
+offset_left = -40.0
+offset_top = -24.0
+offset_bottom = -1.0
+text = "0"
+script = ExtResource("4_tick_counter")
+
+[node name="TileSelectorLayer" type="CanvasLayer" parent="."]
+follow_viewport_enabled = true
+
+[node name="TileSelector" type="Node2D" parent="TileSelectorLayer"]
+script = ExtResource("5_tile_selector")
+HOVER_WIDTH = 3.0
+SELECTION_FILL = Color(0.2, 0.6, 1, 0.57254905)
+
+[node name="Player" type="Node" parent="."]
+script = ExtResource("6_player")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+layer = 100000
+
+[node name="ModeSelector" parent="HUD" instance=ExtResource("7_mode_selector")]
+mouse_force_pass_scroll_events = false
