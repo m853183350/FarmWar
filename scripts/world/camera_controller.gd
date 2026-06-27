@@ -4,6 +4,7 @@
 ## - 鼠标移动到窗口边缘时平滑移动视角
 ## - 鼠标滚轮缩放，带平滑过渡
 ## - 地块左键交互由 [TileSelector] 接管
+## - 摄像机中心点自动限制在地图边界内
 extends Camera2D
 
 const JsonConfigLoader := preload("res://scripts/utils/json_loader.gd")
@@ -48,6 +49,15 @@ var _tile_size: int = 64
 var _zoom_in_button: MouseButton = MOUSE_BUTTON_WHEEL_DOWN
 var _zoom_out_button: MouseButton = MOUSE_BUTTON_WHEEL_UP
 
+## 地图宽度（地块数），从 TerrainGenerator 读取。
+var _map_width: int = 0
+
+## 地图高度（地块数），从 TerrainGenerator 读取。
+var _map_height: int = 0
+
+## 世界坐标边界（Rect2），摄像机中心点不可超出此范围。
+var _world_bounds: Rect2 = Rect2()
+
 # ============================================================
 # 7. @onready 变量
 # ============================================================
@@ -58,10 +68,7 @@ var _zoom_out_button: MouseButton = MOUSE_BUTTON_WHEEL_UP
 
 func _ready() -> void:
 	_target_zoom = zoom.x
-	# 尝试从父节点的 TerrainGenerator 读取 tile_size
-	var parent: Node = get_parent()
-	if parent and parent.has_method("generate"):
-		_tile_size = parent.get("tile_size")
+	_read_terrain_bounds()
 	_apply_config()
 
 func _process(delta: float) -> void:
@@ -124,6 +131,9 @@ func _update_edge_scroll(delta: float) -> void:
 	if zoom_factor > 0.001:
 		position += _scroll_velocity * delta / zoom_factor
 
+	# 限制摄像机中心点不超出地块范围
+	_clamp_position_to_bounds()
+
 func _update_zoom(delta: float) -> void:
 	var current_zoom: float = zoom.x
 	if abs(current_zoom - _target_zoom) < 0.0005:
@@ -133,6 +143,41 @@ func _update_zoom(delta: float) -> void:
 	if abs(new_zoom - _target_zoom) < 0.0005:
 		new_zoom = _target_zoom
 	zoom = Vector2(new_zoom, new_zoom)
+
+
+## 从父节点下查找 TerrainGenerator（world 节点），读取地图尺寸和地块大小。
+func _read_terrain_bounds() -> void:
+	var parent: Node = get_parent()
+	if not parent:
+		return
+	# world 节点是 Camera2D 的兄弟节点，挂载了 TerrainGenerator 脚本
+	var world_node: Node = parent.get_node_or_null("world")
+	if world_node and world_node is TerrainGenerator:
+		var tg: TerrainGenerator = world_node as TerrainGenerator
+		_map_width = tg.map_width
+		_map_height = tg.map_height
+		_tile_size = tg.tile_size
+		_update_world_bounds()
+	# 监听地形重新生成事件，更新边界
+	if EventBus:
+		EventBus.terrain_generated.connect(_on_terrain_generated)
+
+## 根据地图宽高和地块大小计算世界坐标边界。
+func _update_world_bounds() -> void:
+	var world_width: float = float(_map_width * _tile_size)
+	var world_height: float = float(_map_height * _tile_size)
+	_world_bounds = Rect2(0, 0, world_width, world_height)
+
+## 地形生成完成后重新读取边界（处理运行时重新生成的情况）。
+func _on_terrain_generated() -> void:
+	_read_terrain_bounds()
+
+## 限制摄像机中心点不超出世界边界。
+func _clamp_position_to_bounds() -> void:
+	if _world_bounds.size.x <= 0 or _world_bounds.size.y <= 0:
+		return
+	position.x = clampf(position.x, _world_bounds.position.x, _world_bounds.end.x)
+	position.y = clampf(position.y, _world_bounds.position.y, _world_bounds.end.y)
 
 
 # _load_config_file 已迁移至 JsonConfigLoader.load_config_file()
