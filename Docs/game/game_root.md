@@ -17,5 +17,6 @@
 | 根脚本 | 无 | `game_root.gd` |
 | TickSystem 启动 | `auto_start=true`（Autoload 阶段） | `auto_start=false`，由 `GameRoot._ready()` 显式启动 |
 | 调试工具 | 无条件加载为场景子节点 | `OS.is_debug_build()` 守卫，动态实例化 |
-| 根级 Camera2D | 存在但 `current_enabled=false`（死代码） | 已移除 |
 | 入口 | `main.tscn`（项目直接加载） | 由主菜单通过场景切换加载 |
+
+其他节点结构与 main.tscn 保持一致（world 实例、Camera2D、TileSelectorLayer、Player、HUD/ModeSelector）。

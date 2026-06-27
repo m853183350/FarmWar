@@ -98,8 +98,10 @@ The game is divided into **in-match systems** and **meta-game systems**:
 项目已进入**早期实现阶段**。已完成的核心系统：
 
 **已实现：**
-- **TickSystem** — 逻辑时钟 Autoload（独立线程，20 tick/s）
-- **EventBus** — 全局事件总线（21 个信号，解耦系统间通信）
+- **TickSystem** — 逻辑时钟 Autoload（独立线程，20 tick/s，`auto_start=false`，由 GameRoot 显式启动）
+- **EventBus** — 全局事件总线（21 个信号，含 `game_state_changed`，解耦系统间通信）
+- **主菜单系统** — `MainMenu`（开始/加载/成就/设置/退出）+ `LoadingScreen`（后台预加载+进度条）+ `GameRoot`（游戏初始化）
+- **场景切换流程** — `main_menu.tscn` → 确认对话框 → `loading_screen.tscn` → `game.tscn`
 - **地块系统** — `BaseTile` + 4 种子类（DirtTile / FarmlandTile / StoneTile / OceanTile），`TerrainGenerator` 随机生成
 - **作物系统** — `Crop` 基类 + `WheatTier1`，生长阶段 + Tick 驱动 + 收获产物
 - **农场工人** — `FarmWorker`（extends UnitBase），任务队列驱动自动耕作循环
@@ -113,10 +115,12 @@ The game is divided into **in-match systems** and **meta-game systems**:
 - **DebugUI / DebugOverlay** — F3 调试叠加层（分左右两侧，F4/F5 翻页）
 
 **已规划、未实现：**
-- 经济/商店系统、建筑系统、道具/Buff 系统
+- 经济/商店系统、建筑系统
 - 敌人 AI、天气系统、科技树系统
-- 局外系统（流程控制、局外成长、设置、存档）
+- 局外系统（局外成长、设置、存档）
 - 调试控制台（`/` 键命令输入）
 - 音频管理器（AudioManager Autoload）
+- 暂停菜单（ESC 键）
+- 加载游戏、成就、设置界面
 
-**当前地图规格：** 32×32（~1024 地块），可扩展到 200×200。`main.tscn` 加载 world 场景（含 Camera2D、TileSelector、ModeSelector HUD）。
+**当前地图规格：** 50×50（~2500 地块），可扩展到 200×200。项目入口为 `scenes/menu/main_menu.tscn`，游戏场景为 `scenes/game/game.tscn`（含 Camera2D、TileSelector、ModeSelector HUD）。`main.tscn` 已弃用待删除。

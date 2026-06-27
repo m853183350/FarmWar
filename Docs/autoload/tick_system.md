@@ -30,7 +30,7 @@ Autoload 全局单例。管理游戏逻辑时钟，使用独立线程运行 tick
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `tick_interval` | `float` | `0.05` | 当前 tick 间隔（秒） |
-| `auto_start` | `bool` | `true` | 启动时是否自动开始 tick（@export） |
+| `auto_start` | `bool` | `false` | 启动时是否自动开始 tick（@export）。设为 `false`，由 [GameRoot](../../scripts/game/game_root.gd) 在游戏场景加载后显式调用 `start()` |
 | `tick_computation_time_ms` | `float` | `0.0` | **性能仪表**：上一次 tick 计算耗时（毫秒） |
 | `tick_avg_time_ms` | `float` | `0.0` | **性能仪表**：最近 1 秒内平均耗时（毫秒） |
 | `tick_max_time_5s_ms` | `float` | `0.0` | **性能仪表**：最近 5 秒内最大耗时（毫秒） |
