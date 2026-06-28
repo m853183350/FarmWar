@@ -6,7 +6,7 @@
 ##   - 维护多套通行成本网格（ground / flying / aquatic …）
 ##   - 监听 [signal EventBus.terrain_generated] 初始构建
 ##   - 监听 [signal EventBus.terrain_changed]  增量更新
-##   - 提供异步寻路接口（后台线程，主线程不阻塞）
+##   - 使用 [WorkerThreadPool] 提供异步寻路接口，多个请求可并行计算
 extends Node
 
 const WorldUtils := preload("res://scripts/utils/world_utils.gd")
@@ -51,15 +51,15 @@ var _map_height: int = 0
 var _initialized: bool = false
 
 # ============================================================
-# 私有变量 — 线程
+# 私有变量 — WorkerThreadPool 任务追踪
 # ============================================================
 
-var _thread: Thread = null
-var _mutex: Mutex = null
-var _sem: Semaphore = null
-var _running: bool = true
-var _task_queue: Array[Dictionary] = []
-var _result_queue: Array[Dictionary] = []
+## 活跃的 WorkerThreadPool 任务 ID 列表，用于退出时等待和定期清理。
+var _active_task_ids: Array[int] = []
+
+## 关闭中标志，阻止 [method _exit_tree] 期间受理新任务。
+var _shutting_down: bool = false
+
 var _next_request_id: int = 0
 
 # ============================================================
@@ -67,9 +67,6 @@ var _next_request_id: int = 0
 # ============================================================
 
 func _ready() -> void:
-	_mutex = Mutex.new()
-	_sem = Semaphore.new()
-
 	# 连接事件
 	if EventBus:
 		EventBus.terrain_generated.connect(_on_terrain_generated)
@@ -77,17 +74,14 @@ func _ready() -> void:
 	# 成本配置在 _ready 中加载（仅一次）
 	_load_cost_config()
 
-	# 启动后台线程
-	_thread = Thread.new()
-	_thread.start(_worker_loop)
-
 
 func _exit_tree() -> void:
-	_running = false
-	if _sem:
-		_sem.post()  # 唤醒线程使其退出
-	if _thread and _thread.is_started():
-		_thread.wait_to_finish()
+	_shutting_down = true
+
+	# 等待所有活跃的 WorkerThreadPool 任务完成
+	for task_id: int in _active_task_ids:
+		WorkerThreadPool.wait_for_task_completion(task_id)
+	_active_task_ids.clear()
 
 	# 断开事件
 	if EventBus:
@@ -97,7 +91,7 @@ func _exit_tree() -> void:
 
 
 func _process(_delta: float) -> void:
-	_drain_results()
+	_cleanup_completed_tasks()
 
 
 # ============================================================
@@ -110,7 +104,7 @@ func get_cost_grid(type: String = "ground") -> Array[Array]:
 	return cost_grids.get(type, [])
 
 
-## 深拷贝成本网格（供后台线程使用，保证线程安全）。
+## 深拷贝成本网格（供 WorkerThreadPool 任务使用，保证线程安全）。
 func duplicate_cost_grid(type: String = "ground") -> Array[Array]:
 	var src: Array[Array] = cost_grids.get(type, [])
 	if src.is_empty():
@@ -134,12 +128,15 @@ func is_tile_passable(tile: Vector2i, type: String = "ground") -> bool:
 
 ## 异步请求寻路路径。
 ##
+## 将 A* 计算提交到 [WorkerThreadPool]，完成后通过 [signal path_ready] 通知。
+## 多个请求可被并行处理，充分利用多核 CPU。
+##
 ## [param start] 起点地块坐标。
 ## [param goal] 终点地块坐标。
 ## [param cost_grid_type] 成本网格类型，默认 "ground"。
 ## 返回 request_id，完成后通过 [signal path_ready] 通知。
 func request_path(start: Vector2i, goal: Vector2i, cost_grid_type: String = "ground") -> int:
-	if not _initialized:
+	if not _initialized or _shutting_down:
 		return -1
 
 	var request_id: int = _next_request_id
@@ -151,29 +148,23 @@ func request_path(start: Vector2i, goal: Vector2i, cost_grid_type: String = "gro
 		call_deferred("_retry_request_path", request_id, start, goal, cost_grid_type)
 		return request_id
 
-	var task: Dictionary = {
-		"type": "path",
-		"request_id": request_id,
-		"start": start,
-		"goal": goal,
-		"cost_grid": grid_copy,
-	}
-
-	_mutex.lock()
-	_task_queue.append(task)
-	_mutex.unlock()
-	_sem.post()
+	var task_id: int = WorkerThreadPool.add_task(
+		_compute_path_task.bind(request_id, start, goal, grid_copy)
+	)
+	_active_task_ids.append(task_id)
 
 	return request_id
 
 
 ## 异步请求流场计算。
 ##
+## 将 Dijkstra 流场计算提交到 [WorkerThreadPool]，完成后通过 [signal flow_field_ready] 通知。
+##
 ## [param goal] 目标点地块坐标。
 ## [param cost_grid_type] 成本网格类型。
 ## 返回 request_id，完成后通过 [signal flow_field_ready] 通知。
 func request_flow_field(goal: Vector2i, cost_grid_type: String = "ground") -> int:
-	if not _initialized:
+	if not _initialized or _shutting_down:
 		return -1
 
 	var request_id: int = _next_request_id
@@ -184,17 +175,10 @@ func request_flow_field(goal: Vector2i, cost_grid_type: String = "ground") -> in
 		call_deferred("_retry_request_flow_field", request_id, goal, cost_grid_type)
 		return request_id
 
-	var task: Dictionary = {
-		"type": "flow_field",
-		"request_id": request_id,
-		"goal": goal,
-		"cost_grid": grid_copy,
-	}
-
-	_mutex.lock()
-	_task_queue.append(task)
-	_mutex.unlock()
-	_sem.post()
+	var task_id: int = WorkerThreadPool.add_task(
+		_compute_flow_field_task.bind(request_id, goal, grid_copy)
+	)
+	_active_task_ids.append(task_id)
 
 	return request_id
 
@@ -366,62 +350,55 @@ func _load_cost_config() -> void:
 
 
 # ============================================================
-# 私有方法 — 后台线程
+# 私有方法 — WorkerThreadPool 任务（在工作线程中执行）
 # ============================================================
 
-func _worker_loop() -> void:
-	while true:
-		_sem.wait()  # 阻塞等待任务
-
-		_mutex.lock()
-		if not _running:
-			_mutex.unlock()
-			break
-		if _task_queue.is_empty():
-			_mutex.unlock()
-			continue
-		var task: Dictionary = _task_queue.pop_front()
-		_mutex.unlock()
-
-		var result: Dictionary = {"request_id": task["request_id"], "type": task["type"]}
-
-		match task["type"]:
-			"path":
-				var path: Array[Vector2] = Pathfinding.find_path(
-					task["start"] as Vector2i,
-					task["goal"] as Vector2i,
-					task["cost_grid"]
-				)
-				result["path"] = path
-
-			"flow_field":
-				var field = Pathfinding.compute_flow_field(
-					task["goal"] as Vector2i,
-					task["cost_grid"]
-				)
-				result["field"] = field
-
-		_mutex.lock()
-		_result_queue.append(result)
-		_mutex.unlock()
+## WorkerThreadPool 任务：在后台线程执行 A* 寻路。
+## 纯计算，不访问场景树。完成后通过 [method call_deferred] 将结果传回主线程。
+func _compute_path_task(request_id: int, start: Vector2i, goal: Vector2i, grid: Array[Array]) -> void:
+	var path: Array[Vector2] = Pathfinding.find_path(start, goal, grid)
+	call_deferred("_on_path_done", request_id, path)
 
 
-func _drain_results() -> void:
-	_mutex.lock()
-	if _result_queue.is_empty():
-		_mutex.unlock()
-		return
-	var results: Array[Dictionary] = _result_queue.duplicate()
-	_result_queue.clear()
-	_mutex.unlock()
+## WorkerThreadPool 任务：在后台线程执行流场计算。
+## 纯计算，不访问场景树。完成后通过 [method call_deferred] 将结果传回主线程。
+func _compute_flow_field_task(request_id: int, goal: Vector2i, grid: Array[Array]) -> void:
+	var field = Pathfinding.compute_flow_field(goal, grid)
+	call_deferred("_on_flow_field_done", request_id, field)
 
-	for r: Dictionary in results:
-		match r["type"]:
-			"path":
-				path_ready.emit(r["request_id"], r.get("path", []))
-			"flow_field":
-				flow_field_ready.emit(r["request_id"], r.get("field"))
 
+# ============================================================
+# 私有方法 — WorkerThreadPool 结果回调（在主线程执行）
+# ============================================================
+
+## 主线程回调：A* 寻路完成，发射 [signal path_ready] 信号。
+func _on_path_done(request_id: int, path: Array[Vector2]) -> void:
+	path_ready.emit(request_id, path)
+
+
+## 主线程回调：流场计算完成，发射 [signal flow_field_ready] 信号。
+func _on_flow_field_done(request_id: int, field) -> void:
+	flow_field_ready.emit(request_id, field)
+
+
+# ============================================================
+# 私有方法 — 任务清理
+# ============================================================
+
+## 每帧检查已完成的任务 ID 并调用 [method WorkerThreadPool.wait_for_task_completion]
+## 释放资源。完成后从 [member _active_task_ids] 中移除。
+func _cleanup_completed_tasks() -> void:
+	var i: int = _active_task_ids.size() - 1
+	while i >= 0:
+		if WorkerThreadPool.is_task_completed(_active_task_ids[i]):
+			WorkerThreadPool.wait_for_task_completion(_active_task_ids[i])
+			_active_task_ids.remove_at(i)
+		i -= 1
+
+
+# ============================================================
+# 私有方法 — 重试
+# ============================================================
 
 ## 延迟重试（成本网格未就绪时）。
 func _retry_request_path(request_id: int, start: Vector2i, goal: Vector2i, grid_type: String) -> void:
