@@ -114,3 +114,44 @@ signal mode_changed(mode_id: StringName)
 ## 地块修饰器发生变化（MODIFIER 道具添加/移除/数量变化）。
 ## 由 [PropManager] 发出，[BaseTile] 等监听以重新计算地块属性。
 signal tile_modifiers_changed()
+
+# ---- 战斗单位事件 ----
+
+## 技能施放开始时发出。
+## 由 [CombatUnitBase.start_skill] 发出。
+signal skill_cast_started(unit_id: StringName, skill_id: StringName, target_id: StringName)
+
+## 技能命中目标时发出。
+## 由 [CombatUnitBase.deal_damage_to] 发出。
+signal skill_hit(caster_id: StringName, target_id: StringName, skill_id: StringName, damage: float, is_crit: bool)
+
+## 技能施放完成时发出。
+## 由 [CombatUnitBase._finish_skill] 发出。
+signal skill_cast_finished(unit_id: StringName, skill_id: StringName)
+
+## 单位被击杀时发出。
+## 由 [CombatUnitBase._die] 发出。
+signal unit_killed(killed_id: StringName, killer_id: StringName)
+
+## 单位生命值变化时发出。
+## 由 [CombatUnitBase.take_damage] / [CombatUnitBase.heal] 发出。
+signal unit_health_changed(unit_id: StringName, old_health: float, new_health: float)
+
+## 单位法力值变化时发出。
+## 由 [CombatUnitBase.restore_mana] / [CombatUnitBase._finish_skill] 发出。
+signal unit_mana_changed(unit_id: StringName, old_mana: float, new_mana: float)
+
+## Buff 被应用时发出。
+## 由 [CombatUnitBase.apply_buff] 发出。
+signal unit_buff_applied(unit_id: StringName, buff_id: StringName)
+
+## Buff 过期/被移除时发出。
+## 由 [CombatUnitBase.remove_buff] 发出。
+signal unit_buff_expired(unit_id: StringName, buff_id: StringName)
+
+## 弹射物被发射时发出。
+## 由 [CombatUnitBase._try_spawn_projectile] 发出。
+signal projectile_fired(projectile_id: StringName, skill_id: StringName, from_unit_id: StringName)
+
+## 弹射物命中目标时发出（预留 Phase 5）。
+signal projectile_hit(projectile_id: StringName, target_id: StringName)
