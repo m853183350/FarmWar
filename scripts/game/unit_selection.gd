@@ -1,11 +1,11 @@
 ## 自动选兵工具 — 纯静态工具类。
 ##
-## 从已注册的战斗单位中按条件自动选取最合适的单位。
-## 用于 CommandSystem 发出指令时，自动选择距离最近、符合条件的空闲单位。
+## 从 [UnitManager] 已注册的战斗单位中按条件自动选取最合适的单位。
+## 用于 [CommandSystem] 发出指令时，自动选择距离最近、符合条件的空闲单位。
 ##
 ## 使用方式：
-##   var units: Array[CombatUnitBase] = UnitSelection.select_for_squad(squad_config, position)
-##   var units: Array[CombatUnitBase] = UnitSelection.select_units(position, 5, &"swordsman", 0)
+##   var units: Array = UnitSelection.select_for_squad(squad_config, position)
+##   var units: Array = UnitSelection.select_units(position, 5, &"swordsman", 0)
 class_name UnitSelection
 extends RefCounted
 
@@ -24,11 +24,11 @@ extends RefCounted
 ## [param from_position] 从哪个位置计算距离（世界坐标）。
 ## [param faction] 阵营过滤（默认 0 = 友方）。
 ## [return] 选中的单位数组。
-static func select_for_squad(squad_config: Resource, from_position: Vector2, faction: int = 0) -> Array[CombatUnitBase]:
+static func select_for_squad(squad_config: Resource, from_position: Vector2, faction: int = 0) -> Array:
 	if squad_config == null:
 		return []
 
-	var selected: Array[CombatUnitBase] = []
+	var selected: Array = []
 	var used_ids: Array[StringName] = []
 
 	var is_builtin: bool = squad_config.get("is_builtin") as bool if squad_config.get("is_builtin") != null else false
@@ -53,11 +53,10 @@ static func select_for_squad(squad_config: Resource, from_position: Vector2, fac
 		if count <= 0:
 			continue
 
-		var of_type: Array[CombatUnitBase] = _get_combat_units_by_type(from_position, unit_type, faction, true, true, used_ids)
-		# 截取所需数量
+		var of_type: Array = _get_combat_units_by_type(from_position, unit_type, faction, true, true, used_ids)
 		var taken: int = mini(count, of_type.size())
 		for i: int in range(taken):
-			var unit: CombatUnitBase = of_type[i]
+			var unit = of_type[i]
 			selected.append(unit)
 			used_ids.append(unit.unit_id)
 
@@ -81,27 +80,23 @@ static func select_units(
 	only_idle: bool = true,
 	exclude_tasked: bool = true,
 	exclude_ids: Array[StringName] = []
-) -> Array[CombatUnitBase]:
-	var candidates: Array[CombatUnitBase] = []
+) -> Array:
+	var candidates: Array = []
 
-	for unit: CombatUnitBase in UnitManager.get_combat_units(faction):
-		# 排除已选中的单位
+	for unit in UnitManager.get_combat_units(faction):
 		if exclude_ids.has(unit.unit_id):
 			continue
-		# 类型过滤
 		if unit_type_filter != &"" and unit.unit_type != unit_type_filter:
 			continue
-		# 空闲过滤
 		if only_idle and not unit.is_idle():
 			continue
-		# 无任务过滤
 		if exclude_tasked and unit.current_task != null:
 			continue
 		candidates.append(unit)
 
 	# 按距离排序（最近优先）
-	candidates.sort_custom(func(a: CombatUnitBase, b: CombatUnitBase):
-		return a.grid_position.distance_squared_to(from_position) <
+	candidates.sort_custom(func(a, b):
+		return a.grid_position.distance_squared_to(from_position) < \
 		       b.grid_position.distance_squared_to(from_position)
 	)
 
@@ -123,10 +118,10 @@ static func _get_combat_units_by_type(
 	only_idle: bool,
 	exclude_tasked: bool,
 	exclude_ids: Array[StringName]
-) -> Array[CombatUnitBase]:
-	var candidates: Array[CombatUnitBase] = []
+) -> Array:
+	var candidates: Array = []
 
-	for unit: CombatUnitBase in UnitManager.get_combat_units(faction):
+	for unit in UnitManager.get_combat_units(faction):
 		if exclude_ids.has(unit.unit_id):
 			continue
 		if unit.unit_type != unit_type:
@@ -137,8 +132,8 @@ static func _get_combat_units_by_type(
 			continue
 		candidates.append(unit)
 
-	candidates.sort_custom(func(a: CombatUnitBase, b: CombatUnitBase):
-		return a.grid_position.distance_squared_to(from_position) <
+	candidates.sort_custom(func(a, b):
+		return a.grid_position.distance_squared_to(from_position) < \
 		       b.grid_position.distance_squared_to(from_position)
 	)
 

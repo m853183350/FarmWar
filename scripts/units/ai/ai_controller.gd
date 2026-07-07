@@ -59,9 +59,6 @@ const BEHAVIOR_FSM_SCRIPT: String = "res://scripts/units/ai/behavior_fsm.gd"
 ## TickSystem 引用。
 const TickSystemClass = preload("res://scripts/autoload/tick_system.gd")
 
-## CombatTask 枚举引用（用于全局覆盖指令类型匹配）。
-const CombatTaskClass = preload("res://scripts/units/combat_task.gd")
-
 ## CombatTaskFactory 引用。
 const TaskFactoryClass = preload("res://scripts/units/combat_task_factory.gd")
 

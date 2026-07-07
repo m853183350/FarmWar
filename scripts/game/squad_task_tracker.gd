@@ -10,10 +10,6 @@
 ##   4. 所有成员已到达目标区域
 ##
 ## 轮询策略：每 N tick 扫描一次（默认 10 tick），非每 tick 全图扫描。
-##
-## 使用方式：
-##   SquadTaskTracker.register_squad(squad_id, tasks)   # 注册小队
-##   SquadTaskTracker.unregister_squad(squad_id)        # 解散小队
 class_name SquadTaskTracker
 extends Node
 
@@ -64,28 +60,25 @@ func _exit_tree() -> void:
 # ============================================================
 
 ## 注册一个小队任务。
-##
-## [param squad_id] 小队 ID。
-## [param tasks] 小队成员的 CombatTask 数组。
-func register_squad(squad_id: StringName, tasks: Array[CombatTask]) -> void:
+func register_squad(squad_id: StringName, tasks: Array) -> void:
 	if squad_id == &"" or tasks.is_empty():
 		return
 
 	var data: SquadTrackingData = SquadTrackingData.new()
 	data.squad_id = squad_id
 	data.task_ids = []
-	for task: CombatTask in tasks:
+	for task in tasks:
 		data.task_ids.append(task.task_id)
 
 	# 从第一个任务获取共享参数
-	var first: CombatTask = tasks[0]
+	var first = tasks[0]
 	data.task_center = first.task_center
 	data.loot_radius = first.loot_radius
 	data.patrol_radius = first.patrol_radius
 
 	active_squads[squad_id] = data
 
-## 注销一个小队（任务完成或中断时调用）。
+## 注销一个小队。
 func unregister_squad(squad_id: StringName) -> void:
 	active_squads.erase(squad_id)
 
@@ -97,7 +90,6 @@ func is_squad_active(squad_id: StringName) -> bool:
 # 10. 私有方法 — Tick 轮询
 # ============================================================
 
-## Tick 回调：定期轮询活跃小队。
 func _on_tick(_delta: float) -> void:
 	_tick_counter += 1
 	if _tick_counter < SCAN_INTERVAL_TICKS:
@@ -107,7 +99,7 @@ func _on_tick(_delta: float) -> void:
 	var completed_squads: Array[StringName] = []
 
 	for squad_id: StringName in active_squads.keys():
-		var data: SquadTrackingData = active_squads[squad_id] as SquadTrackingData
+		var data = active_squads[squad_id] as SquadTrackingData
 		if data == null:
 			completed_squads.append(squad_id)
 			continue
@@ -115,7 +107,6 @@ func _on_tick(_delta: float) -> void:
 		if _check_squad_complete(data):
 			completed_squads.append(squad_id)
 
-	# 清理已完成的小队
 	for sid: StringName in completed_squads:
 		active_squads.erase(sid)
 		if EventBus:
@@ -125,43 +116,31 @@ func _on_tick(_delta: float) -> void:
 # 10. 私有方法 — 条件检查
 # ============================================================
 
-## 检查小队是否满足所有完成条件。
 func _check_squad_complete(data: SquadTrackingData) -> bool:
-	# 条件 1：所有成员任务未被覆盖
 	if not _all_tasks_active(data):
 		return false
-
-	# 条件 2：所有成员仇恨为空
 	if not _all_members_no_hatred(data):
 		return false
-
-	# 条件 3：范围内战利品已清空
 	if not _loot_in_range_cleared(data):
 		return false
-
-	# 条件 4：所有成员到达目标区域
 	if not _all_members_arrived(data):
 		return false
-
 	return true
 
-## 检查所有成员的 CombatTask 是否仍有效（未被 OVERRIDDEN）。
 func _all_tasks_active(data: SquadTrackingData) -> bool:
 	for task_id: int in data.task_ids:
-		var task: CombatTask = _find_task_by_id(task_id)
+		var task = _find_task_by_id(task_id)
 		if task == null:
 			continue
 		if task.status == CombatTask.CombatTaskStatus.OVERRIDDEN:
 			return false
 	return true
 
-## 检查所有成员是否都没有仇恨目标。
 func _all_members_no_hatred(data: SquadTrackingData) -> bool:
 	for task_id: int in data.task_ids:
-		var unit: CombatUnitBase = _find_unit_by_task_id(task_id)
+		var unit = _find_unit_by_task_id(task_id)
 		if unit == null:
 			continue
-		# 通过 AIController → HatredSystem 检查
 		var ai: Node = unit.get_node_or_null("AIController") as Node
 		if ai != null and ai.get("hatred_system") != null:
 			var hatred: Node = ai.hatred_system as Node
@@ -169,29 +148,24 @@ func _all_members_no_hatred(data: SquadTrackingData) -> bool:
 				return false
 	return true
 
-## 检查任务中心 + loot_radius 范围内是否还有战利品。
 func _loot_in_range_cleared(data: SquadTrackingData) -> bool:
 	if data.loot_radius <= 0.0:
-		return true  # 无战利品收集需求
-
+		return true
 	if _world == null:
-		return true  # 无法检查，默认通过
+		return true
 
-	# 查找范围内的 LootItem 节点（通过 group 查找）
 	var loot_items: Array[Node] = get_tree().get_nodes_in_group("loot_item")
 	for loot: Node2D in loot_items:
 		if not is_instance_valid(loot):
 			continue
 		var dist: float = loot.global_position.distance_to(data.task_center)
-		if dist <= data.loot_radius * 64.0:  # 转换为像素
-			return false  # 还有未收集的战利品
-
+		if dist <= data.loot_radius * 64.0:
+			return false
 	return true
 
-## 检查所有成员是否到达目标区域。
 func _all_members_arrived(data: SquadTrackingData) -> bool:
 	for task_id: int in data.task_ids:
-		var unit: CombatUnitBase = _find_unit_by_task_id(task_id)
+		var unit = _find_unit_by_task_id(task_id)
 		if unit == null:
 			continue
 		var dist: float = unit.grid_position.distance_to(data.task_center)
@@ -203,20 +177,18 @@ func _all_members_arrived(data: SquadTrackingData) -> bool:
 # 10. 私有方法 — 辅助查询
 # ============================================================
 
-## 按 task_id 查找 CombatTask。
-func _find_task_by_id(task_id: int) -> CombatTask:
-	for unit: CombatUnitBase in UnitManager.get_combat_units():
+func _find_task_by_id(task_id: int):
+	for unit in UnitManager.get_combat_units():
 		if unit.current_task != null and unit.current_task is CombatTask:
-			var t: CombatTask = unit.current_task as CombatTask
+			var t = unit.current_task as CombatTask
 			if t.task_id == task_id:
 				return t
 	return null
 
-## 按 task_id 查找持有该任务的单位。
-func _find_unit_by_task_id(task_id: int) -> CombatUnitBase:
-	for unit: CombatUnitBase in UnitManager.get_combat_units():
+func _find_unit_by_task_id(task_id: int):
+	for unit in UnitManager.get_combat_units():
 		if unit.current_task != null and unit.current_task is CombatTask:
-			var t: CombatTask = unit.current_task as CombatTask
+			var t = unit.current_task as CombatTask
 			if t.task_id == task_id:
 				return unit
 	return null
@@ -226,19 +198,9 @@ func _find_unit_by_task_id(task_id: int) -> CombatUnitBase:
 # SquadTrackingData — 小队追踪数据
 # ============================================================
 
-## 小队追踪记录（内部使用）。
 class SquadTrackingData extends RefCounted:
-	## 小队 ID。
 	var squad_id: StringName = &""
-
-	## 小队成员的 CombatTask ID 列表。
 	var task_ids: Array[int] = []
-
-	## 任务中心点（世界坐标）。
 	var task_center: Vector2 = Vector2.ZERO
-
-	## 战利品收集半径（格）。
 	var loot_radius: float = 0.0
-
-	## 巡逻半径（格）。
 	var patrol_radius: float = 5.0

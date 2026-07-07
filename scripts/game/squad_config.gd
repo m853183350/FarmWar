@@ -3,8 +3,6 @@
 ## 描述一个战术小队的完整配置：小队 ID、显示名、兵种组成。
 ## 内置两个默认小队（"idle_all" 和 "all_units"），由 [SquadManager] 维护。
 ##
-## SquadEntry 是嵌套 Resource，描述单个兵种类型和数量。
-##
 ## 使用方式：
 ##   var config: SquadConfig = SquadConfig.new()
 ##   config.squad_id = "assault_1"
@@ -70,20 +68,3 @@ func _to_string() -> String:
 	else:
 		desc += ", ".join(parts)
 	return desc
-
-
-# ============================================================
-# SquadEntry - 小队兵种条目
-# ============================================================
-
-## 小队兵种条目 Resource。
-##
-## 描述小队中一种兵种的数量要求。
-class_name SquadEntry
-extends Resource
-
-## 兵种类型 ID（如 "swordsman", "archer"）。
-@export var unit_type: StringName = &""
-
-## 该兵种的数量。
-@export var count: int = 0
