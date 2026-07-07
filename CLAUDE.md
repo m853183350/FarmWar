@@ -35,6 +35,10 @@ godot --test
 
 # Export the project
 godot --export-release "Windows Desktop" build/
+
+# Edit with python3
+python
+# not python3
 ```
 
 ## Architecture (Planned)
@@ -78,6 +82,7 @@ The game is divided into **in-match systems** and **meta-game systems**:
 - If an object has more than 5 attributes, use json file in /config
 - All files must use Tab indentation (width: 4 spaces)
 - No trailing whitespace
+- Use `utils/json_loader.gd` to load json config
 
 **Class-internal declaration order:**
 1. Signals

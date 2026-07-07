@@ -155,3 +155,47 @@ signal projectile_fired(projectile_id: StringName, skill_id: StringName, from_un
 
 ## 弹射物命中目标时发出（预留 Phase 5）。
 signal projectile_hit(projectile_id: StringName, target_id: StringName)
+
+## 指令系统信号（Phase 3+）
+
+## 指令被发出时广播。
+## [param command_type] 指令类型（int，对应 CombatTask.CombatTaskType）。
+## [param params] 指令参数字典。
+signal command_issued(command_type: int, params: Dictionary)
+
+## 全体集合指令覆盖。所有友方单位收到后立即移动到集结点。
+signal command_override_rally(position: Vector2)
+
+## 全体撤退指令覆盖。所有友方单位收到后立即移动到撤退点。
+signal command_override_retreat(position: Vector2)
+
+## 全体原地待命指令覆盖。所有友方单位收到后停止当前任务。
+signal command_override_hold()
+
+## 战斗任务被分配到单位时发出。
+signal combat_task_assigned(unit_id: StringName, task_id: int)
+
+## 战斗任务完成时发出。
+signal combat_task_completed(unit_id: StringName, task_id: int)
+
+## 战斗任务被全局指令覆盖时发出。
+signal combat_task_overridden(unit_id: StringName, task_id: int)
+
+## 敌方单位生成时发出。
+signal enemy_spawned(enemy_id: StringName, wave_number: int)
+
+## 敌方波次开始时发出。
+signal enemy_wave_started(wave_number: int)
+
+## 敌方波次清除时发出。
+signal enemy_wave_cleared(wave_number: int)
+
+## 战利品被单位采集时发出。
+## [param unit_id] 采集者的单位 ID。
+## [param loot_name] 被采集的战利品节点名。
+signal loot_collected(unit_id: StringName, loot_name: StringName)
+
+## 小队任务整体完成时发出。
+## 由 [SquadTaskTracker] 在确认所有成员满足完成条件后发出。
+## [param squad_id] 完成的小队 ID。
+signal squad_task_completed(squad_id: StringName)

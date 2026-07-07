@@ -25,6 +25,12 @@ signal worker_removed(worker_id: StringName)
 ## 任务成功分配到工人时发出。
 signal task_assigned(task: TaskData, worker_id: StringName)
 
+## 战斗单位注册时发出。
+signal combat_unit_registered(unit_id: StringName)
+
+## 战斗单位注销时发出。
+signal combat_unit_unregistered(unit_id: StringName)
+
 # ============================================================
 # 3. 常量
 # ============================================================
@@ -42,6 +48,9 @@ var workers: Dictionary = {}
 
 ## 全局待分配任务池。工人队列满时，多余任务暂存于此。
 var pending_tasks: Array[TaskData] = []
+
+## 已注册的战斗单位字典 { unit_id: CombatUnitBase }。
+var combat_units: Dictionary = {}
 
 # ============================================================
 # 6. 私有变量
@@ -104,6 +113,39 @@ func remove_worker(worker: FarmWorker) -> void:
 	worker.queue_free()
 	print("UnitManager: 移除工人 %s" % worker_id)
 	worker_removed.emit(worker_id)
+
+# ============================================================
+# 9. 公开方法 — 战斗单位管理
+# ============================================================
+
+## 注册一个战斗单位。
+## 由 [method CombatUnitBase._ready] 调用。
+func register_combat_unit(unit: CombatUnitBase) -> void:
+	if unit == null:
+		return
+	combat_units[unit.unit_id] = unit
+	combat_unit_registered.emit(unit.unit_id)
+
+## 注销一个战斗单位。
+## 由 [method CombatUnitBase._exit_tree] 调用。
+func unregister_combat_unit(unit_id: StringName) -> void:
+	if combat_units.has(unit_id):
+		combat_units.erase(unit_id)
+		combat_unit_unregistered.emit(unit_id)
+
+## 获取所有（或指定阵营的）已注册战斗单位。
+## [param faction] 阵营过滤（-1 = 不限）。
+func get_combat_units(faction: int = -1) -> Array[CombatUnitBase]:
+	var result: Array[CombatUnitBase] = []
+	for unit: CombatUnitBase in combat_units.values():
+		if not is_instance_valid(unit):
+			continue
+		if not unit.is_alive():
+			continue
+		if faction >= 0 and unit.faction != faction:
+			continue
+		result.append(unit)
+	return result
 
 # ============================================================
 # 9. 公开方法 — 查询

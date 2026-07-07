@@ -1,10 +1,15 @@
 [gd_scene format=3 uid="uid://dxmpw6nme3m0j"]
 
-[ext_resource type="Script" path="res://scripts/units/combat_unit_base.gd" id="1_combat_base"]
-[ext_resource type="Script" path="res://scripts/units/animation_controller.gd" id="2_anim_ctrl"]
-[ext_resource type="Script" path="res://scripts/units/audio_controller.gd" id="3_audio_ctrl"]
-[ext_resource type="Script" path="res://scripts/units/hitbox.gd" id="4_hitbox"]
-[ext_resource type="Script" path="res://scripts/units/hurtbox.gd" id="5_hurtbox"]
+[ext_resource type="Script" uid="uid://bjojn7j3680ax" path="res://scripts/units/combat_unit_base.gd" id="1_combat_base"]
+[ext_resource type="Script" uid="uid://b6g8h7arobceb" path="res://scripts/units/animation_controller.gd" id="2_anim_ctrl"]
+[ext_resource type="Texture2D" uid="uid://cmylnkb8ug6uf" path="res://assets/sprites/null_img.png" id="2_shcyp"]
+[ext_resource type="Script" uid="uid://dbudolr6gr0it" path="res://scripts/units/audio_controller.gd" id="3_audio_ctrl"]
+[ext_resource type="Script" uid="uid://b3q7fapk31t33" path="res://scripts/units/hitbox.gd" id="4_hitbox"]
+[ext_resource type="Script" uid="uid://dnq88qvyesouo" path="res://scripts/units/hurtbox.gd" id="5_hurtbox"]
+[ext_resource type="Script" path="res://scripts/units/ai/ai_controller.gd" id="6_ai_ctrl"]
+[ext_resource type="Script" path="res://scripts/units/ai/hatred_system.gd" id="7_hatred"]
+[ext_resource type="Script" path="res://scripts/units/ai/skill_selector.gd" id="8_skill_sel"]
+[ext_resource type="Script" path="res://scripts/units/ai/behavior_fsm.gd" id="9_beh_fsm"]
 
 [sub_resource type="CircleShape2D" id="1_body_circle"]
 radius = 24.0
@@ -15,67 +20,77 @@ radius = 36.0
 [sub_resource type="CircleShape2D" id="3_hurtbox_circle"]
 radius = 28.0
 
-[node name="CombatUnitBase" type="CharacterBody2D"]
+[node name="CombatUnitBase" type="CharacterBody2D" unique_id=907282245]
 script = ExtResource("1_combat_base")
 
-[node name="Sprite2D" type="Sprite2D" parent="."]
-centered = true
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=710694298]
+texture_filter = 1
+position = Vector2(1.9073486e-06, 1.9073486e-06)
+scale = Vector2(8, 8)
+texture = ExtResource("2_shcyp")
 
-[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=964153707]
 
-[node name="AnimationController" type="Node" parent="."]
+[node name="AnimationController" type="Node" parent="." unique_id=838169723]
 script = ExtResource("2_anim_ctrl")
 animation_player = NodePath("../AnimationPlayer")
 
-[node name="AudioStreamPlayer2D" type="AudioStreamPlayer2D" parent="."]
+[node name="AudioStreamPlayer2D" type="AudioStreamPlayer2D" parent="." unique_id=1079905231]
 
-[node name="AudioController" type="Node" parent="."]
+[node name="AudioController" type="Node" parent="." unique_id=1454510984]
 script = ExtResource("3_audio_ctrl")
 audio_player = NodePath("../AudioStreamPlayer2D")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=558208142]
 shape = SubResource("1_body_circle")
 
-[node name="Hitbox" type="Area2D" parent="."]
+[node name="Hitbox" type="Area2D" parent="." unique_id=2129171513]
 script = ExtResource("4_hitbox")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Hitbox"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Hitbox" unique_id=1206542553]
 shape = SubResource("2_hitbox_circle")
 
-[node name="Hurtbox" type="Area2D" parent="."]
+[node name="Hurtbox" type="Area2D" parent="." unique_id=179269745]
 script = ExtResource("5_hurtbox")
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Hurtbox"]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Hurtbox" unique_id=641877055]
 shape = SubResource("3_hurtbox_circle")
 
-[node name="SelectionIndicator" type="Sprite2D" parent="."]
+[node name="SelectionIndicator" type="Sprite2D" parent="." unique_id=562766215]
 visible = false
+modulate = Color(0.2, 1, 0.2, 0.6)
 z_index = 5
-modulate = Color(0.2, 1.0, 0.2, 0.6)
 scale = Vector2(1.2, 1.2)
-centered = true
 
-[node name="HealthBar" type="ProgressBar" parent="."]
+[node name="HealthBar" type="ProgressBar" parent="." unique_id=1793755784]
 visible = false
 offset_left = -16.0
 offset_top = -28.0
 offset_right = 16.0
 offset_bottom = -24.0
-max_value = 100.0
 value = 100.0
 show_percentage = false
 
-[node name="ManaBar" type="ProgressBar" parent="."]
+[node name="ManaBar" type="ProgressBar" parent="." unique_id=1244045959]
 visible = false
+modulate = Color(0.2, 0.4, 1, 1)
 offset_left = -16.0
 offset_top = -22.0
 offset_right = 16.0
 offset_bottom = -18.0
-max_value = 100.0
 value = 100.0
 show_percentage = false
-modulate = Color(0.2, 0.4, 1.0, 1.0)
 
-[node name="BuffIndicatorContainer" type="Node2D" parent="."]
+[node name="BuffIndicatorContainer" type="Node2D" parent="." unique_id=1375687111]
 
-[node name="AIController" type="Node" parent="."]
+[node name="AIController" type="Node" parent="." unique_id=571466097]
+script = ExtResource("6_ai_ctrl")
+
+[node name="HatredSystem" type="Node" parent="AIController"]
+script = ExtResource("7_hatred")
+
+[node name="SkillSelector" type="Node" parent="AIController"]
+script = ExtResource("8_skill_sel")
+
+[node name="BehaviorFSM" type="Node" parent="AIController"]
+script = ExtResource("9_beh_fsm")

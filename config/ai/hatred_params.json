@@ -1,0 +1,12 @@
+{
+	"alert_range": 10.0,
+	"chase_range": 20.0,
+	"scan_interval_ticks": 5,
+	"max_hatred_entries": 10,
+	"threat_weights": {
+		"distance": 10.0,
+		"health_ratio": 5.0,
+		"attacking_me_multiplier": 2.0,
+		"attacking_ally_multiplier": 1.3
+	}
+}

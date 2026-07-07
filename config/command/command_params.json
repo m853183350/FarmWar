@@ -1,0 +1,10 @@
+{
+	"default_unit_count": -1,
+	"patrol_radius": 5.0,
+	"loot_radius": 10.0,
+	"explore_radius": 12.0,
+	"arrival_threshold": 8.0,
+	"path_update_interval": 20,
+	"scan_interval_ticks": 10,
+	"max_distance_for_selection": 100.0
+}

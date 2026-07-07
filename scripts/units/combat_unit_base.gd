@@ -188,10 +188,6 @@ var active_buffs: Array[BuffData] = []
 # 5. 公开变量 — 控制器组件（组合模式）
 # ============================================================
 
-## AI 控制器组件节点。所有战斗单位都挂载。
-## Phase 3 实现，当前为 null 预留。
-var ai_controller: Node = null
-
 ## 当前正在执行的任务。null = 无任务，进入自主 AI 模式。
 ## Phase 4 实现，当前为 null 预留。
 var current_task: RefCounted = null
@@ -216,6 +212,7 @@ var _stun_remaining: int = 0
 @onready var hitbox: Hitbox = $Hitbox as Hitbox
 @onready var hurtbox: Hurtbox = $Hurtbox as Hurtbox
 @onready var mana_bar: ProgressBar = $ManaBar as ProgressBar
+@onready var ai_controller: Node = $AIController as Node
 
 # ============================================================
 # 8. 生命周期方法
@@ -251,9 +248,16 @@ func _ready() -> void:
 	collision_layer = hitbox.CollisionLayer.PLAYER_UNIT_BODY if faction == 0 else hitbox.CollisionLayer.ENEMY_UNIT_BODY
 	collision_mask = (1 << (hitbox.CollisionLayer.WORLD - 1)) | (1 << (hitbox.CollisionLayer.PLAYER_UNIT_BODY - 1)) | (1 << (hitbox.CollisionLayer.ENEMY_UNIT_BODY - 1))
 
+	# 注册到 UnitManager（供 UnitSelection / CommandSystem 查询）
+	if UnitManager:
+		UnitManager.register_combat_unit(self)
+
 func _exit_tree() -> void:
 	if hitbox and hitbox.hit_detected.is_connected(_on_hitbox_hit):
 		hitbox.hit_detected.disconnect(_on_hitbox_hit)
+	# 从 UnitManager 注销
+	if UnitManager:
+		UnitManager.unregister_combat_unit(unit_id)
 	super._exit_tree()
 
 # ============================================================
@@ -739,7 +743,6 @@ func _update_hurtbox_invulnerability() -> void:
 # ============================================================
 
 ## 委托给 AIController 进行决策。
-## Phase 3 实现，当前为空占位。
 func _update_controller(_delta: float) -> void:
 	# 眩晕状态自动计时恢复
 	if state == CombatState.STUNNED:
@@ -748,9 +751,9 @@ func _update_controller(_delta: float) -> void:
 			_set_combat_state(CombatState.IDLE)
 		return
 
-	# TODO Phase 3: 委托给 AIController
-	# if ai_controller:
-	#     ai_controller.update(self, _delta)
+	# 委托给 AIController（Phase 3）
+	if ai_controller and ai_controller.has_method("update"):
+		ai_controller.update(self, _delta)
 
 # ============================================================
 # 10. 私有方法 — 属性计算辅助
@@ -836,5 +839,24 @@ func _die() -> void:
 ## 子类可覆写以指定不同的配置路径。
 func _load_combat_config() -> void:
 	# 配置路径由子类或 JSON 数据决定
-	# 当前提供合理的默认值
+	# 子类应覆写此方法以加载专属配置并调用 init_ai_from_config
 	pass
+
+## 从配置字典初始化 AI 控制器。
+## 在子类的 [method _load_combat_config] 中加载 JSON 后调用。
+func init_ai_from_config(ai_config: Dictionary) -> void:
+	if ai_controller and ai_controller.has_method("init_from_config"):
+		ai_controller.init_from_config(ai_config)
+
+## 从 JSON 文件路径加载并初始化 AI 控制器。
+func init_ai_from_file(path: String) -> void:
+	var file: FileAccess = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		push_warning("CombatUnitBase: 无法读取 AI 配置 %s" % path)
+		return
+	var data: Dictionary = JSON.parse_string(file.get_as_text()) as Dictionary
+	file.close()
+	if data == null:
+		return
+	var ai_config: Dictionary = data.get("ai", {})
+	init_ai_from_config(ai_config)

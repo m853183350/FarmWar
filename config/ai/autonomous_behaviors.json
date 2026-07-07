@@ -1,0 +1,39 @@
+{
+	"Guard": {
+		"description": "原地警戒 — 站立不动，周期性扫描敌人，发现敌人后切换到追击",
+		"script": "res://scripts/units/ai/behaviors/guard_behavior.gd",
+		"look_around_interval": 40
+	},
+	"Patrol": {
+		"description": "区域巡逻 — 在指定半径内随机游荡，发现敌人后切换到追击",
+		"script": "res://scripts/units/ai/behaviors/patrol_behavior.gd",
+		"patrol_radius": 5.0,
+		"wait_ticks": 40
+	},
+	"Chase": {
+		"description": "追击敌人 — 向仇恨目标移动，进入射程后切换到战斗",
+		"script": "res://scripts/units/ai/behaviors/chase_behavior.gd",
+		"path_update_interval": 10
+	},
+	"Combat": {
+		"description": "战斗 — 在射程内使用技能攻击目标",
+		"script": "res://scripts/units/ai/behaviors/combat_behavior.gd"
+	},
+	"Flee": {
+		"description": "逃跑 — 低血量时远离威胁目标",
+		"script": "res://scripts/units/ai/behaviors/flee_behavior.gd",
+		"flee_duration_ticks": 60,
+		"safe_distance": 12.0
+	},
+	"ExecuteTask": {
+		"description": "执行任务 — 执行 CommandSystem 分配的任务",
+		"script": "res://scripts/units/ai/behaviors/execute_task_behavior.gd"
+	},
+	"Loot": {
+		"description": "战利品采集 — 战斗结束后自动收集附近掉落物",
+		"script": "res://scripts/units/ai/behaviors/loot_behavior.gd",
+		"loot_range": 15.0,
+		"collect_ticks": 10,
+		"loot_during_combat": false
+	}
+}

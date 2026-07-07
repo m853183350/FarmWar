@@ -1,0 +1,30 @@
+{
+	"unit_type": "melee_grunt",
+	"display_name": "近战步兵",
+	"faction": 1,
+	"stats": {
+		"max_health": 100.0,
+		"move_speed": 2.5,
+		"armor": 10.0,
+		"magic_resist": 0.0,
+		"crit_chance": 0.05,
+		"crit_multiplier": 1.5,
+		"max_mana": 0.0,
+		"mana_regen": 0.0,
+		"health_regen": 0.0,
+		"knockback_resistance": 0.2,
+		"acceleration": 20.0,
+		"deceleration": 20.0
+	},
+	"skills": ["basic_melee_slash"],
+	"ai": {
+		"default_behavior": "Guard",
+		"behaviors": ["Guard", "Chase", "Combat", "Flee", "Loot"],
+		"enable_hatred": true,
+		"enable_skill_selector": true,
+		"flee_hp_ratio": 0.20,
+		"hatred_alert_range": 8.0,
+		"hatred_chase_range": 15.0,
+		"hatred_scan_interval": 5
+	}
+}
