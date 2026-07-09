@@ -134,10 +134,10 @@ var max_mana: float = 0.0
 ## 当前法力值。
 var current_mana: float = 0.0
 
-## 法力恢复（/秒）。
+## 法力恢复（/tick）。
 var mana_regen: float = 0.0
 
-## 生命恢复（/秒）。
+## 生命恢复（/tick）。
 var health_regen: float = 0.0
 
 ## 当前攻击目标。
@@ -920,8 +920,8 @@ func init_from_config(data: Dictionary) -> void:
 		cooldown_reduction = stats.get("cooldown_reduction", cooldown_reduction) as float
 		max_mana = stats.get("max_mana", max_mana) as float
 		current_mana = max_mana
-		mana_regen = stats.get("mana_regen", mana_regen) as float
-		health_regen = stats.get("health_regen", health_regen) as float
+		mana_regen = stats.get("mana_regen", mana_regen / TickSystem.tick_interval) as float
+		health_regen = stats.get("health_regen", health_regen / TickSystem.tick_interval) as float
 		knockback_resistance = stats.get("knockback_resistance", knockback_resistance) as float
 		acceleration = stats.get("acceleration", acceleration) as float
 		deceleration = stats.get("deceleration", deceleration) as float
