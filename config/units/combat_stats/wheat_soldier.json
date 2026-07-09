@@ -18,8 +18,8 @@
 	"stats": {
 		"acceleration": 20.0,
 		"armor": 0,
-		"attack_power": 0,
-		"attack_speed": 0,
+		"attack_power": 10,
+		"attack_speed": 1.2,
 		"cooldown_reduction": 0,
 		"crit_chance": 0.0,
 		"crit_multiplier": 1.5,
@@ -31,5 +31,6 @@
 		"max_health": 50,
 		"max_mana": 0,
 		"move_speed": 5
-	}
+	},
+	"cost": 200
 }
