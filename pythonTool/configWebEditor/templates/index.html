@@ -32,6 +32,7 @@
 		<main id="content">
 			<div id="table-header">
 				<h2 id="table-title">Select a table</h2>
+				<button id="btn-add-row" class="primary hidden" title="Add new row">+ Add Row</button>
 				<div id="table-meta"></div>
 			</div>
 			<div id="table-container">
@@ -48,12 +49,33 @@
 			<div id="notes-info">
 				<span id="notes-cell-path"></span>
 			</div>
-			<textarea id="notes-textarea" placeholder="Add a note for this field..."></textarea>
+			<textarea id="notes-textarea" placeholder="Click a column header ○ to add a note for this field..."></textarea>
 			<div id="notes-actions">
 				<button id="btn-note-save">Save Note</button>
 				<button id="btn-note-delete" class="danger">Delete</button>
 			</div>
 		</aside>
+	</div>
+
+	<!-- Add row overlay -->
+	<div id="addrow-overlay" class="hidden">
+		<div id="addrow-dialog">
+			<div id="addrow-header">
+				<h3>Add New Row</h3>
+				<button id="btn-addrow-close">&times;</button>
+			</div>
+			<div id="addrow-body">
+				<div class="addrow-field">
+					<label for="addrow-key">Key / Filename:</label>
+					<input type="text" id="addrow-key" placeholder="e.g. new_unit">
+				</div>
+				<div id="addrow-fields"></div>
+			</div>
+			<div id="addrow-actions">
+				<button id="btn-addrow-submit" class="primary">Create</button>
+				<button id="btn-addrow-cancel">Cancel</button>
+			</div>
+		</div>
 	</div>
 
 	<!-- Sub-table overlay -->

@@ -2,6 +2,7 @@
 Table builder — groups ParsedFile objects into tables and flattens nested structures.
 """
 import json
+import os
 from typing import Any, Optional
 
 from config_reader import ParsedFile
@@ -19,6 +20,7 @@ class TableDef:
 		self.mode: str = mode  # "file-as-row" | "key-as-row" | "single-object" | "array"
 		self.columns: list[str] = []  # ordered column paths
 		self.column_types: dict[str, str] = {}  # column_path -> "str"|"int"|"float"|"bool"|"json"
+		self.column_tree: list[dict] = []  # hierarchical column headers for multi-level display
 		self.sub_tables: dict[str, list] = {}  # column_path -> list of sub-table data for each row
 
 
@@ -175,6 +177,89 @@ def _parse_cell_value_for_save(value, original_value) -> Any:
 	return value
 
 
+def _build_column_tree(columns: list[str]) -> list[dict]:
+	"""
+	Build a hierarchical column tree for multi-level header rendering.
+	Groups columns by dot-notation prefix: "stats.max_health" → parent "stats", leaf "max_health".
+	Returns a flat list of nodes in display order, each with {label, path, depth, colspan, leaf}.
+	"""
+	if not columns:
+		return []
+
+	# Step 1: detect groups (columns that share a common prefix)
+	# A prefix is a group if at least 2 columns share it
+	prefix_counts: dict[str, int] = {}
+	for col in columns:
+		if "." in col:
+			prefix = col.split(".")[0]
+			prefix_counts[prefix] = prefix_counts.get(prefix, 0) + 1
+
+	# Only treat as group if 2+ columns share the prefix
+	groups: set[str] = {p for p, c in prefix_counts.items() if c >= 2}
+
+	# Step 2: build ordered tree nodes
+	nodes: list[dict] = []
+	seen_prefixes: set[str] = set()
+	current_prefix: str | None = None
+
+	for col in columns:
+		prefix: str = col.split(".")[0] if "." in col else ""
+		leaf_name: str = col.split(".", 1)[1] if "." in col else col
+		is_grouped: bool = prefix in groups
+
+		if is_grouped:
+			# Emit group header if this is the first column with this prefix
+			if prefix not in seen_prefixes:
+				# Count colspan for this group
+				colspan: int = sum(1 for c in columns if c.startswith(prefix + "."))
+				nodes.append({
+					"label": prefix,
+					"path": prefix,
+					"depth": 1,
+					"colspan": colspan,
+					"leaf": False,
+				})
+				seen_prefixes.add(prefix)
+			nodes.append({
+				"label": leaf_name,
+				"path": col,
+				"depth": 2,
+				"colspan": 1,
+				"leaf": True,
+			})
+		else:
+			# Flat column (no group)
+			nodes.append({
+				"label": col,
+				"path": col,
+				"depth": 0,
+				"colspan": 1,
+				"leaf": True,
+			})
+
+	return nodes
+
+
+def create_default_cells(columns: list[str], column_types: dict[str, str]) -> dict[str, Any]:
+	"""
+	Generate default cell values for a new row based on column types.
+	"""
+	defaults: dict[str, Any] = {}
+	for col in columns:
+		ct = column_types.get(col, "str")
+		if ct == "bool":
+			defaults[col] = False
+		elif ct == "int":
+			defaults[col] = 0
+		elif ct == "float":
+			defaults[col] = 0.0
+		elif ct == "json_array":
+			defaults[col] = "[]"
+		else:
+			defaults[col] = ""
+	return defaults
+
+
 def build_tables(parsed_files: list[ParsedFile]) -> list[TableData]:
 	"""
 	Group parsed files into tables and flatten data for display.
@@ -232,6 +317,7 @@ def build_tables(parsed_files: list[ParsedFile]) -> list[TableData]:
 		other_cols: list[str] = sorted(all_columns - set(id_cols))
 		ordered_columns: list[str] = id_cols + other_cols
 		table_def.columns = ordered_columns
+		table_def.column_tree = _build_column_tree(ordered_columns)
 
 		# Build rows
 		for fr in flattened_rows:
@@ -299,6 +385,7 @@ def build_tables(parsed_files: list[ParsedFile]) -> list[TableData]:
 			other_cols_map: list[str] = sorted(all_columns_set - set(id_cols_map))
 			ordered_cols: list[str] = id_cols_map + other_cols_map
 			table_def.columns = ordered_cols
+			table_def.column_tree = _build_column_tree(ordered_cols)
 
 			td_map: TableData = _find_or_create_table_data(table_datas, table_def)
 			for entry in flattened_entries:
@@ -341,6 +428,7 @@ def build_tables(parsed_files: list[ParsedFile]) -> list[TableData]:
 
 			ordered_cols_arr: list[str] = sorted(all_columns_set_arr)
 			table_def.columns = ordered_cols_arr
+			table_def.column_tree = _build_column_tree(ordered_cols_arr)
 
 			td_arr: TableData = _find_or_create_table_data(table_datas, table_def)
 			for item in flat_items:
@@ -375,6 +463,7 @@ def build_tables(parsed_files: list[ParsedFile]) -> list[TableData]:
 			flat = _flatten_dict(pf.data)
 			ordered_cols_obj: list[str] = sorted(flat.keys())
 			table_def.columns = ordered_cols_obj
+			table_def.column_tree = _build_column_tree(ordered_cols_obj)
 
 			cells = {}
 			for col in ordered_cols_obj:

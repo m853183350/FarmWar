@@ -3,14 +3,15 @@
 	"prop_name": "皇帝的金锄头",
 	"description": "当有土地被翻耕时，所有作物获得 100% 生长速度加成，持续 3 秒。",
 	"rarity": "legendary",
-	"max_stack": 1,
+	"icon_path": "",
+	"max_stack": 10,
 	"prop_category": "duration",
 
 	"trigger_signal": "tile_action_completed",
 	"trigger_condition": {
 		"action": "plow"
 	},
-
+	"modifier": {},
 	"effects": [
 		{
 			"type": "apply_timed_modifier",

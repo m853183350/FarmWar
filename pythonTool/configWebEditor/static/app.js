@@ -1,16 +1,16 @@
 /**
  * Config Web Editor — Frontend SPA
- * Handles table browsing, inline editing, save, notes, and sub-table expansion.
+ * Multi-level headers, column-level notes, inline editing, save.
  */
 (function () {
 	"use strict";
 
 	// --- State ---
-	let tables = [];               // List of table summaries from /api/tables
-	let activeTableId = null;      // Currently displayed table id
-	let activeTableData = null;    // Full table data from /api/tables/<id>
-	let dirtyCells = new Set();    // Set of "row_key:column" strings that have been modified
-	let activeNoteCell = null;     // { table_id, row_key, column }
+	let tables = [];
+	let activeTableId = null;
+	let activeTableData = null;
+	let dirtyCells = new Set();
+	let activeNoteCell = null; // { table_id, column, config_key }
 
 	// --- DOM refs ---
 	const $ = (sel) => document.querySelector(sel);
@@ -29,7 +29,10 @@
 	const elSubtableOverlay = $("#subtable-overlay");
 	const elSubtableTitle = $("#subtable-title");
 	const elSubtableContainer = $("#subtable-container");
-	const elToastContainer = $("#toast-container");
+	const elBtnAddRow = $("#btn-add-row");
+	const elAddrowOverlay = $("#addrow-overlay");
+	const elAddrowKey = $("#addrow-key");
+	const elAddrowFields = $("#addrow-fields");
 
 	// --- Toast ---
 	function toast(msg, type) {
@@ -37,12 +40,13 @@
 		const el = document.createElement("div");
 		el.className = "toast " + type;
 		el.textContent = msg;
-		if (!elToastContainer) {
-			const c = document.createElement("div");
-			c.id = "toast-container";
-			document.body.appendChild(c);
+		let container = document.getElementById("toast-container");
+		if (!container) {
+			container = document.createElement("div");
+			container.id = "toast-container";
+			document.body.appendChild(container);
 		}
-		(document.getElementById("toast-container") || document.body).appendChild(el);
+		container.appendChild(el);
 		setTimeout(function () { el.remove(); }, 2500);
 	}
 
@@ -55,8 +59,7 @@
 
 	async function apiPut(url, body) {
 		const r = await fetch(url, {
-			method: "PUT",
-			headers: { "Content-Type": "application/json" },
+			method: "PUT", headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(body),
 		});
 		if (!r.ok) throw new Error(r.status + " " + r.statusText);
@@ -64,18 +67,20 @@
 	}
 
 	async function apiPost(url, body) {
-		const opts = {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-		};
+		const opts = { method: "POST", headers: { "Content-Type": "application/json" } };
 		if (body !== undefined) opts.body = JSON.stringify(body);
 		const r = await fetch(url, opts);
 		if (!r.ok) throw new Error(r.status + " " + r.statusText);
 		return r.json();
 	}
 
-	async function apiDelete(url) {
-		const r = await fetch(url, { method: "DELETE" });
+	async function apiDelete(url, body) {
+		const opts = { method: "DELETE" };
+		if (body !== undefined) {
+			opts.headers = { "Content-Type": "application/json" };
+			opts.body = JSON.stringify(body);
+		}
+		const r = await fetch(url, opts);
 		if (!r.ok) throw new Error(r.status + " " + r.statusText);
 		return r.json();
 	}
@@ -93,7 +98,6 @@
 	// --- Sidebar ---
 	function renderSidebar(tableList) {
 		if (!elTableNav) return;
-		// Group tables by top-level directory
 		const groups = {};
 		tableList.forEach(function (t) {
 			const parts = t.id.split("/");
@@ -102,9 +106,8 @@
 			groups[group].push(t);
 		});
 
-		const sortedGroups = Object.keys(groups).sort();
 		let html = "";
-		sortedGroups.forEach(function (g) {
+		Object.keys(groups).sort().forEach(function (g) {
 			html += '<div class="table-nav-group">' + escHtml(g) + "</div>";
 			groups[g].forEach(function (t) {
 				const active = t.id === activeTableId ? " active" : "";
@@ -116,7 +119,6 @@
 		});
 		elTableNav.innerHTML = html;
 
-		// Bind click events
 		elTableNav.querySelectorAll(".table-nav-item").forEach(function (btn) {
 			btn.addEventListener("click", function () {
 				loadTable(this.dataset.tableId);
@@ -144,26 +146,52 @@
 		}
 	}
 
+	// --- Multi-level header rendering ---
 	function renderTable(data) {
 		if (!elTableTitle || !elTableContainer || !elTableMeta) return;
 		elTablePlaceholder.style.display = "none";
 
 		elTableTitle.textContent = data.display_name || data.id;
+		if (elBtnAddRow) {
+			elBtnAddRow.classList.toggle("hidden", data.mode === "single-object");
+		}
 		elTableMeta.textContent = data.mode + " · " + data.rows.length + " rows · " + data.columns.length + " columns";
 
 		const cols = data.columns;
 		const rows = data.rows;
 		const colTypes = data.column_types || {};
 		const notes = data.notes || {};
+		const tree = data.column_tree || [];
 
-		let html = '<table class="data-table"><thead><tr>';
-		html += '<th class="col-row-label">Row</th>';
-		cols.forEach(function (c) {
-			html += "<th>" + escHtml(c) + "</th>";
-		});
-		html += '<th class="col-notes">Notes</th>';
-		html += "</tr></thead><tbody>";
+		// Build header rows from column_tree
+		// Row 1: group headers (depth=1 nodes) + empty cells for flat columns
+		// Row 2: leaf labels (depth=0 or depth=2 nodes) with note icon
+		let headerRow1 = '<tr><th class="col-row-label group-header" rowspan="2">Row</th>';
+		let headerRow2 = '<tr>';
+		let leafColIndex = 0;
 
+		for (let i = 0; i < tree.length; i++) {
+			const node = tree[i];
+			if (node.depth === 1) {
+				// Group header — spans its children
+				headerRow1 += '<th class="group-header" colspan="' + node.colspan + '">' + escHtml(node.label) + "</th>";
+			} else if (node.depth === 0 || node.depth === 2) {
+				// Leaf — needs a placeholder in row 1 if preceded by a group
+				if (node.depth === 0) {
+					// Flat column: rowspan=2 in headerRow1
+					headerRow1 += '<th class="leaf-header" rowspan="2"><div>' + escHtml(node.label) + '</div><div class="header-note" data-column="' + escHtml(node.path) + '" title="Click to add note">' + renderNoteIndicator(notes, data.id, node.path) + "</div></th>";
+				} else {
+					// depth=2: label goes in row 2, row 1 was handled by group header
+					headerRow2 += '<th class="leaf-header"><div>' + escHtml(node.label) + '</div><div class="header-note" data-column="' + escHtml(node.path) + '" title="Click to add note">' + renderNoteIndicator(notes, data.id, node.path) + "</div></th>";
+				}
+			}
+		}
+		headerRow1 += "</tr>";
+		headerRow2 += "</tr>";
+
+		let html = '<table class="data-table"><thead>' + headerRow1 + headerRow2 + "</thead><tbody>";
+
+		// Build body rows
 		rows.forEach(function (row) {
 			html += "<tr>";
 			html += '<td class="row-label">' + escHtml(row.row_label) + "</td>";
@@ -172,8 +200,6 @@
 				const dirty = dirtyCells.has(cellKey);
 				const colType = colTypes[col] || "str";
 				const val = row.cells[col];
-				const noteKey = row.row_key + "/" + col;
-				const hasNote = notes[noteKey] && notes[noteKey].trim();
 
 				let cellClass = "";
 				let displayVal = "";
@@ -200,14 +226,10 @@
 					html += '<span class="cell-value json-array" contenteditable="false"' + dataAttrs + ' title="Click to view/edit array">' + escHtml(truncate(displayVal, 60)) + "</span>";
 				} else {
 					const editable = colType !== "bool";
-					html += '<span class="cell-value' + (editable ? "" : "") + '" contenteditable="' + (editable ? "true" : "false") + '"' + dataAttrs + ">" + escHtml(displayVal) + "</span>";
+					html += '<span class="cell-value" contenteditable="' + (editable ? "true" : "false") + '"' + dataAttrs + ">" + escHtml(displayVal) + "</span>";
 				}
 				html += "</td>";
 			});
-			// Notes column
-			html += '<td class="col-notes-cell"><button class="notes-btn" data-row-key="' + escHtml(row.row_key) + '">';
-			html += "📝";
-			html += "</button></td>";
 			html += "</tr>";
 		});
 		html += "</tbody></table>";
@@ -216,14 +238,33 @@
 
 		// Bind cell editing
 		bindCellEvents(data);
-
-		// Bind notes buttons
-		bindNotesButtons(data);
+		// Bind header note clicks
+		bindHeaderNotes(data);
 	}
 
+	function renderNoteIndicator(notes, tableId, columnPath) {
+		const configKey = tableId + "/" + columnPath;
+		const noteText = notes[configKey] && notes[configKey].trim();
+		if (noteText) {
+			const short = noteText.length > 30 ? noteText.substring(0, 28) + "…" : noteText;
+			return '<span class="note-dot has-note" title="' + escHtml(noteText) + '">●</span><span class="note-text">' + escHtml(short) + '</span>';
+		}
+		return '<span class="note-dot" title="Click to add note">○</span>';
+	}
+
+	function bindHeaderNotes(data) {
+		elTableContainer.querySelectorAll(".header-note").forEach(function (el) {
+			el.addEventListener("click", function (e) {
+				e.stopPropagation();
+				const column = this.dataset.column;
+				openColumnNote(data.id, column);
+			});
+		});
+	}
+
+	// --- Cell editing ---
 	function bindCellEvents(data) {
 		elTableContainer.querySelectorAll(".cell-value").forEach(function (span) {
-			// Handle double-click on json-array cells
 			if (span.classList.contains("json-array")) {
 				span.addEventListener("click", function () {
 					openSubTable(span.dataset.rowKey, span.dataset.column);
@@ -231,7 +272,6 @@
 				return;
 			}
 
-			// Boolean cells: toggle on click
 			if (span.classList.contains("bool")) {
 				span.addEventListener("click", function () {
 					const current = span.classList.contains("true");
@@ -240,13 +280,10 @@
 				return;
 			}
 
-			// Editable cells
 			const rowKey = span.dataset.rowKey;
 			const column = span.dataset.column;
 
-			span.addEventListener("focus", function () {
-				span.classList.add("editing");
-			});
+			span.addEventListener("focus", function () { span.classList.add("editing"); });
 
 			span.addEventListener("blur", function () {
 				span.classList.remove("editing");
@@ -263,17 +300,12 @@
 					span.textContent = getOriginalValue(rowKey, column) || "";
 					span.blur();
 				} else if (e.key === "Tab") {
-					e.preventDefault();
-					span.blur();
-					// Focus next editable cell
+					e.preventDefault(); span.blur();
 					const allCells = Array.from(elTableContainer.querySelectorAll(".cell-value:not(.bool):not(.json-array)"));
 					const idx = allCells.indexOf(span);
-					if (idx >= 0 && idx < allCells.length - 1) {
-						allCells[idx + 1].focus();
-					}
+					if (idx >= 0 && idx < allCells.length - 1) allCells[idx + 1].focus();
 				} else if (e.key === "Enter" && !e.shiftKey) {
-					e.preventDefault();
-					span.blur();
+					e.preventDefault(); span.blur();
 				}
 			});
 		});
@@ -282,16 +314,12 @@
 	function getOriginalValue(rowKey, column) {
 		if (!activeTableData) return undefined;
 		for (let i = 0; i < activeTableData.rows.length; i++) {
-			const row = activeTableData.rows[i];
-			if (row.row_key === rowKey) {
-				return row.cells[column];
-			}
+			if (activeTableData.rows[i].row_key === rowKey) return activeTableData.rows[i].cells[column];
 		}
 		return undefined;
 	}
 
 	function setCellValue(tableId, rowKey, column, value, spanEl) {
-		// Update local state optimistically
 		if (activeTableData) {
 			for (let i = 0; i < activeTableData.rows.length; i++) {
 				if (activeTableData.rows[i].row_key === rowKey) {
@@ -301,19 +329,13 @@
 			}
 		}
 
-		// Mark dirty
 		const cellKey = rowKey + ":" + column;
 		dirtyCells.add(cellKey);
 		if (spanEl) spanEl.classList.add("dirty");
 		updateDirtyCounter();
 
-		// Send to server (in-memory update)
 		apiPut("/api/tables/" + encodeURIComponent(tableId) + "/cell", {
-			row_key: rowKey,
-			column: column,
-			value: value,
-		}).then(function () {
-			// Success — keep dirty marker (not saved to disk yet)
+			row_key: rowKey, column: column, value: value,
 		}).catch(function (e) {
 			toast("Failed to update cell: " + e.message, "error");
 			dirtyCells.delete(cellKey);
@@ -334,18 +356,12 @@
 
 	// --- Save ---
 	async function saveAll() {
-		if (!activeTableId) {
-			toast("No table selected", "info");
-			return;
-		}
+		if (!activeTableId) { toast("No table selected", "info"); return; }
 		try {
 			const result = await apiPost("/api/tables/" + encodeURIComponent(activeTableId) + "/save");
 			dirtyCells = new Set();
 			updateDirtyCounter();
-			// Remove dirty markers from DOM
-			elTableContainer.querySelectorAll(".dirty").forEach(function (el) {
-				el.classList.remove("dirty");
-			});
+			elTableContainer.querySelectorAll(".dirty").forEach(function (el) { el.classList.remove("dirty"); });
 			toast("Saved " + result.saved.length + " file(s)", "success");
 		} catch (e) {
 			toast("Save failed: " + e.message, "error");
@@ -358,9 +374,7 @@
 			const result = await apiPost("/api/refresh");
 			tables = await apiGet("/api/tables");
 			renderSidebar(tables);
-			activeTableData = null;
-			dirtyCells = new Set();
-			updateDirtyCounter();
+			activeTableData = null; dirtyCells = new Set(); updateDirtyCounter();
 			if (elTableContainer) elTableContainer.innerHTML = "";
 			if (elTablePlaceholder) elTablePlaceholder.style.display = "";
 			if (elTableTitle) elTableTitle.textContent = "Select a table";
@@ -371,85 +385,70 @@
 		}
 	}
 
-	// --- Notes ---
-	function bindNotesButtons(data) {
-		const notes = data.notes || {};
-		elTableContainer.querySelectorAll(".notes-btn").forEach(function (btn) {
-			const rowKey = btn.dataset.rowKey;
-			// Check if any note exists for this row
-			let hasAny = false;
-			Object.keys(notes).forEach(function (k) {
-				if (k.startsWith(rowKey + "/")) hasAny = true;
-			});
-			if (hasAny) btn.classList.add("has-note");
-
-			btn.addEventListener("click", function (e) {
-				e.stopPropagation();
-				openNotesPanel(data.id, rowKey);
-			});
-		});
-	}
-
-	function openNotesPanel(tableId, rowKey) {
+	// --- Column-level Notes ---
+	function openColumnNote(tableId, column) {
 		if (!elNotesPanel || !elNotesTextarea || !elNotesCellPath) return;
+		const configKey = tableId + "/" + column;
 		elNotesPanel.classList.remove("collapsed");
-		activeNoteCell = { table_id: tableId, row_key: rowKey, column: null };
-		elNotesCellPath.textContent = tableId + " / " + rowKey;
-		elNotesTextarea.value = "";
-		elNotesTextarea.placeholder = "Select a cell in the table to add a note, or write a row-level note here.";
+		activeNoteCell = { table_id: tableId, column: column, config_key: configKey };
+		elNotesCellPath.textContent = configKey;
+
+		const notes = activeTableData ? (activeTableData.notes || {}) : {};
+		elNotesTextarea.value = notes[configKey] || "";
 		elNotesTextarea.focus();
 	}
 
-	function openCellNote(tableId, rowKey, column) {
-		if (!elNotesPanel || !elNotesTextarea || !elNotesCellPath) return;
-		elNotesPanel.classList.remove("collapsed");
-		activeNoteCell = { table_id: tableId, row_key: rowKey, column: column };
-		elNotesCellPath.textContent = tableId + " / " + rowKey + " / " + column;
-
-		// Load existing note
-		apiGet("/api/notes/" + encodeURIComponent(tableId)).then(function (notes) {
-			const noteKey = rowKey + "/" + column;
-			elNotesTextarea.value = notes[noteKey] || "";
-		}).catch(function () {
-			elNotesTextarea.value = "";
-		});
-	}
-
 	function saveNote() {
-		if (!activeNoteCell || !activeNoteCell.table_id || !elNotesTextarea) return;
-		const noteText = elNotesTextarea.value;
-		const col = activeNoteCell.column || "_row";
+		if (!activeNoteCell || !elNotesTextarea) return;
+		const configKey = activeNoteCell.config_key;
+		if (!configKey) { toast("No column selected", "error"); return; }
 
-		apiPut(
-			"/api/notes/" + encodeURIComponent(activeNoteCell.table_id) + "/" +
-			encodeURIComponent(activeNoteCell.row_key) + "/" + encodeURIComponent(col),
-			{ note_text: noteText }
+		apiPut("/api/notes", { config_key: configKey, note_text: elNotesTextarea.value }
 		).then(function () {
 			toast("Note saved", "success");
-			// If currently viewing this table, reload to show note indicators
-			if (activeTableId === activeNoteCell.table_id) {
-				loadTable(activeTableId);
+			// Update notes in active table data and re-render header notes
+			if (activeTableData) {
+				if (!activeTableData.notes) activeTableData.notes = {};
+				activeTableData.notes[configKey] = elNotesTextarea.value;
 			}
+			// Refresh note indicators in header
+			refreshHeaderNotes(activeTableData);
 		}).catch(function (e) {
 			toast("Failed to save note: " + e.message, "error");
 		});
 	}
 
 	function deleteNote() {
-		if (!activeNoteCell || !activeNoteCell.table_id || !elNotesTextarea) return;
-		const col = activeNoteCell.column || "_row";
+		if (!activeNoteCell || !elNotesTextarea) return;
+		const configKey = activeNoteCell.config_key;
+		if (!configKey) { toast("No column selected", "error"); return; }
 
-		apiDelete(
-			"/api/notes/" + encodeURIComponent(activeNoteCell.table_id) + "/" +
-			encodeURIComponent(activeNoteCell.row_key) + "/" + encodeURIComponent(col)
+		apiDelete("/api/notes", { config_key: configKey }
 		).then(function () {
 			elNotesTextarea.value = "";
 			toast("Note deleted", "info");
-			if (activeTableId === activeNoteCell.table_id) {
-				loadTable(activeTableId);
+			if (activeTableData && activeTableData.notes) {
+				delete activeTableData.notes[configKey];
 			}
+			refreshHeaderNotes(activeTableData);
 		}).catch(function (e) {
 			toast("Failed to delete note: " + e.message, "error");
+		});
+	}
+
+	function refreshHeaderNotes(data) {
+		if (!data) return;
+		const notes = data.notes || {};
+		elTableContainer.querySelectorAll(".header-note").forEach(function (el) {
+			const column = el.dataset.column;
+			const configKey = data.id + "/" + column;
+			const noteText = notes[configKey] && notes[configKey].trim();
+			if (noteText) {
+				const short = noteText.length > 30 ? noteText.substring(0, 28) + "…" : noteText;
+				el.innerHTML = '<span class="note-dot has-note" title="' + escHtml(noteText) + '">●</span><span class="note-text">' + escHtml(short) + '</span>';
+			} else {
+				el.innerHTML = '<span class="note-dot" title="Click to add note">○</span>';
+			}
 		});
 	}
 
@@ -460,6 +459,78 @@
 		if (elNotesTextarea) elNotesTextarea.value = "";
 	}
 
+	// --- Add Row ---
+	function openAddRowDialog() {
+		if (!activeTableData || !elAddrowOverlay || !elAddrowFields || !elAddrowKey) return;
+		const data = activeTableData;
+		const colTypes = data.column_types || {};
+
+		// Set key input label based on mode
+		const keyLabel = data.mode === "key-as-row" ? "Key name:" : "Filename:";
+		const keyPh = data.mode === "key-as-row" ? "e.g. NewBehavior" : "e.g. new_unit";
+		elAddrowKey.value = "";
+		elAddrowKey.placeholder = keyPh;
+
+		// Build field inputs for each column
+		let fieldsHtml = "";
+		data.columns.forEach(function (col) {
+			const ct = colTypes[col] || "str";
+			let inputHtml;
+			if (ct === "bool") {
+				inputHtml = '<select><option value="false">false</option><option value="true">true</option></select>';
+			} else if (ct === "json_array") {
+				inputHtml = '<input type="text" value="[]">';
+			} else if (ct === "int" || ct === "float") {
+				inputHtml = '<input type="number" value="0" step="' + (ct === "float" ? "0.1" : "1") + '">';
+			} else {
+				inputHtml = '<input type="text" value="">';
+			}
+			fieldsHtml += '<div class="addrow-field"><label>' + escHtml(col) + '</label>' + inputHtml + '</div>';
+		});
+		elAddrowFields.innerHTML = fieldsHtml;
+		elAddrowOverlay.classList.remove("hidden");
+		elAddrowKey.focus();
+	}
+
+	function closeAddRowDialog() {
+		if (!elAddrowOverlay) return;
+		elAddrowOverlay.classList.add("hidden");
+	}
+
+	function submitAddRow() {
+		if (!activeTableData || !elAddrowKey) return;
+		const rowKey = elAddrowKey.value.trim();
+		if (!rowKey) { toast("Please enter a key / filename", "error"); return; }
+
+		// Collect cell values from form
+		const cells = {};
+		const fieldDivs = elAddrowFields.querySelectorAll(".addrow-field");
+		const cols = activeTableData.columns;
+		fieldDivs.forEach(function (div, idx) {
+			const input = div.querySelector("input, select");
+			if (input && idx < cols.length) {
+				const col = cols[idx];
+				const ct = (activeTableData.column_types || {})[col] || "str";
+				let val = input.value;
+				if (ct === "bool") val = val === "true";
+				else if (ct === "int") val = parseInt(val, 10) || 0;
+				else if (ct === "float") val = parseFloat(val) || 0.0;
+				cells[col] = val;
+			}
+		});
+
+		apiPost("/api/tables/" + encodeURIComponent(activeTableData.id) + "/add_row", {
+			row_key: rowKey,
+			cells: cells,
+		}).then(function (result) {
+			toast("Created: " + result.row_key, "success");
+			closeAddRowDialog();
+			loadTable(activeTableData.id);
+		}).catch(function (e) {
+			toast("Failed to create row: " + e.message, "error");
+		});
+	}
+
 	// --- Sub-table ---
 	function openSubTable(rowKey, column) {
 		if (!activeTableId || !elSubtableOverlay || !elSubtableTitle || !elSubtableContainer) return;
@@ -467,20 +538,17 @@
 		elSubtableContainer.innerHTML = "<p style='padding:20px;color:var(--text-muted)'>Loading...</p>";
 		elSubtableOverlay.classList.remove("hidden");
 
-		apiGet("/api/subtable/" + encodeURIComponent(activeTableId) + "/" + encodeURIComponent(rowKey) + "/" + encodeURIComponent(column))
+		apiGet("/api/subtable?table_id=" + encodeURIComponent(activeTableId) + "&row_key=" + encodeURIComponent(rowKey) + "&column=" + encodeURIComponent(column))
 			.then(function (data) {
 				if (!data.columns || data.columns.length === 0) {
 					elSubtableContainer.innerHTML = "<p style='padding:20px;color:var(--text-muted)'>Empty array or unable to parse.</p>";
 					return;
 				}
 				let html = '<table class="data-table"><thead><tr><th>#</th>';
-				data.columns.forEach(function (c) {
-					html += "<th>" + escHtml(c) + "</th>";
-				});
+				data.columns.forEach(function (c) { html += "<th>" + escHtml(c) + "</th>"; });
 				html += "</tr></thead><tbody>";
 				data.rows.forEach(function (row) {
-					html += "<tr>";
-					html += '<td class="row-label">' + escHtml(row.row_label) + "</td>";
+					html += "<tr><td class='row-label'>" + escHtml(row.row_label) + "</td>";
 					data.columns.forEach(function (c) {
 						const v = row.cells[c] !== undefined ? row.cells[c] : "";
 						html += '<td><span class="cell-value" contenteditable="false">' + escHtml(String(v)) + "</span></td>";
@@ -511,32 +579,16 @@
 		return str.length > len ? str.substring(0, len) + "…" : str;
 	}
 
-	// --- Global click handler for cell notes ---
-	document.addEventListener("click", function (e) {
-		// Right-click on a cell-value opens it in the notes panel
-		const cell = e.target.closest(".cell-value");
-		if (cell && cell.dataset.rowKey && cell.dataset.column) {
-			// Ctrl+click or middle-click opens notes for that cell
-			if (e.ctrlKey || e.metaKey || e.button === 1) {
-				e.preventDefault();
-				openCellNote(activeTableId, cell.dataset.rowKey, cell.dataset.column);
-			}
-		}
-	});
-
 	// --- Event bindings ---
 	document.addEventListener("DOMContentLoaded", function () {
 		init();
 
-		// Refresh button
 		const btnRefresh = $("#btn-refresh");
 		if (btnRefresh) btnRefresh.addEventListener("click", refreshAll);
 
-		// Save All button
 		const btnSaveAll = $("#btn-save-all");
 		if (btnSaveAll) btnSaveAll.addEventListener("click", saveAll);
 
-		// Notes panel
 		const btnNotesClose = $("#btn-notes-close");
 		if (btnNotesClose) btnNotesClose.addEventListener("click", closeNotesPanel);
 
@@ -546,7 +598,6 @@
 		const btnNoteDelete = $("#btn-note-delete");
 		if (btnNoteDelete) btnNoteDelete.addEventListener("click", deleteNote);
 
-		// Sub-table overlay
 		const btnSubClose = $("#btn-subtable-close");
 		if (btnSubClose) btnSubClose.addEventListener("click", closeSubTable);
 
@@ -554,16 +605,22 @@
 			if (e.target === elSubtableOverlay) closeSubTable();
 		});
 
-		// Table search/filter
-		if (elTableSearch) {
+	// Add row modal
+	if (elBtnAddRow) elBtnAddRow.addEventListener("click", openAddRowDialog);
+	$("#btn-addrow-close") && $("#btn-addrow-close").addEventListener("click", closeAddRowDialog);
+	$("#btn-addrow-cancel") && $("#btn-addrow-cancel").addEventListener("click", closeAddRowDialog);
+	$("#btn-addrow-submit") && $("#btn-addrow-submit").addEventListener("click", submitAddRow);
+	elAddrowOverlay && elAddrowOverlay.addEventListener("click", function (e) {
+		if (e.target === elAddrowOverlay) closeAddRowDialog();
+	});
+
+	if (elTableSearch) {
 			elTableSearch.addEventListener("input", function () {
 				const q = this.value.toLowerCase();
 				elTableNav.querySelectorAll(".table-nav-item").forEach(function (btn) {
-					const text = (btn.textContent || "").toLowerCase();
-					btn.style.display = text.includes(q) ? "" : "none";
+					btn.style.display = (btn.textContent || "").toLowerCase().includes(q) ? "" : "none";
 				});
 				elTableNav.querySelectorAll(".table-nav-group").forEach(function (grp) {
-					const nextItems = grp.nextElementSibling;
 					let visible = false;
 					let sib = grp.nextElementSibling;
 					while (sib && sib.classList.contains("table-nav-item")) {
@@ -575,30 +632,8 @@
 			});
 		}
 
-		// Keyboard shortcuts
 		document.addEventListener("keydown", function (e) {
-			if (e.ctrlKey && e.key === "s") {
-				e.preventDefault();
-				saveAll();
-			}
+			if (e.ctrlKey && e.key === "s") { e.preventDefault(); saveAll(); }
 		});
-
-		// Add click handler on table container for cell→notes interaction
-		const elTableCont = $("#table-container");
-		if (elTableCont) {
-			elTableCont.addEventListener("dblclick", function (e) {
-				const cell = e.target.closest(".cell-value");
-				if (cell && cell.dataset.rowKey && cell.dataset.column && !cell.classList.contains("json-array") && !cell.classList.contains("bool")) {
-					// Allow normal editing on double-click
-				}
-			});
-			elTableCont.addEventListener("contextmenu", function (e) {
-				const cell = e.target.closest(".cell-value");
-				if (cell && cell.dataset.rowKey && cell.dataset.column) {
-					e.preventDefault();
-					openCellNote(activeTableId, cell.dataset.rowKey, cell.dataset.column);
-				}
-			});
-		}
 	});
 })();

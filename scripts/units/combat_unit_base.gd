@@ -671,10 +671,10 @@ func _update_buffs(_delta: float) -> void:
 ## 更新生命/法力恢复（每 tick）。
 func _update_regen(_delta: float) -> void:
 	if health_regen > 0.0:
-		var regen_amount: float = health_regen * TickSystem.tick_interval
+		var regen_amount: float = health_regen # * TickSystem.tick_interval
 		heal(regen_amount)
 	if mana_regen > 0.0 and max_mana > 0.0:
-		var regen_amount: float = mana_regen * TickSystem.tick_interval
+		var regen_amount: float = mana_regen # * TickSystem.tick_interval
 		restore_mana(regen_amount)
 
 ## 更新所有技能冷却（每 tick -1）。

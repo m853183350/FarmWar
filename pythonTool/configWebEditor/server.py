@@ -3,6 +3,7 @@ Config Web Editor — Flask backend server.
 Provides REST API for browsing, editing, and saving JSON config files.
 """
 import argparse
+import json
 import os
 import sys
 
@@ -14,7 +15,7 @@ if _script_dir not in sys.path:
 	sys.path.insert(0, _script_dir)
 
 from config_reader import scan_config_dir, ParsedFile
-from table_builder import build_tables, TableData, reconstruct_and_save, _parse_cell_value_for_save
+from table_builder import build_tables, TableData, reconstruct_and_save, _parse_cell_value_for_save, create_default_cells
 from notes_store import NotesStore
 
 app: Flask = Flask(__name__)
@@ -81,7 +82,6 @@ def index():
 @app.route("/api/tables")
 def api_tables():
 	"""Return list of all table summaries."""
-	print(f"[DEBUG api_tables] _table_list len={len(_table_list)}, _tables len={len(_tables)}")
 	return jsonify(_table_list)
 
 
@@ -92,13 +92,14 @@ def api_table_get(table_id: str):
 	if td is None:
 		return jsonify({"error": f"Table not found: {table_id}"}), 404
 
-	notes: dict[str, str] = _notes_store.get_notes_for_table(table_id) if _notes_store else {}
+	notes: dict[str, str] = _notes_store.get_notes_by_prefix(table_id) if _notes_store else {}
 
 	return jsonify({
 		"id": td.table_def.table_id,
 		"display_name": td.table_def.display_name,
 		"mode": td.table_def.mode,
 		"columns": td.table_def.columns,
+		"column_tree": td.table_def.column_tree,
 		"column_types": td.table_def.column_types,
 		"rows": td.rows,
 		"notes": notes,
@@ -157,6 +158,98 @@ def api_table_save(table_id: str):
 		return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/tables/<path:table_id>/add_row", methods=["POST"])
+def api_table_add_row(table_id: str):
+	"""Add a new row (file / map-key / array-item) and write to disk."""
+	td: TableData | None = _tables.get(table_id)
+	if td is None:
+		return jsonify({"error": f"Table not found: {table_id}"}), 404
+
+	body: dict = request.get_json()
+	if body is None:
+		return jsonify({"error": "Request body must be JSON"}), 400
+
+	row_key: str = body.get("row_key", "").strip()
+	cells: dict = body.get("cells", {})
+
+	if not row_key:
+		return jsonify({"error": "row_key is required"}), 400
+
+	mode: str = td.table_def.mode
+	abs_config_dir: str = os.path.abspath(_config_dir)
+
+	try:
+		if mode == "file-as-row":
+			# Determine target directory from existing rows
+			target_dir: str = abs_config_dir
+			if td.rows:
+				first_file: str = td.rows[0].get("_file", "")
+				target_dir = os.path.dirname(os.path.join(abs_config_dir, first_file))
+			os.makedirs(target_dir, exist_ok=True)
+			new_path: str = os.path.join(target_dir, row_key + ".json" if not row_key.endswith(".json") else row_key)
+
+			# Build JSON from flattened cells
+			from table_builder import _unflatten_value
+			default_cells: dict = create_default_cells(td.table_def.columns, td.table_def.column_types)
+			default_cells.update(cells)
+			new_data = _unflatten_value(default_cells)
+
+			tmp_path: str = new_path + ".tmp"
+			with open(tmp_path, "w", encoding="utf-8") as f:
+				json.dump(new_data, f, ensure_ascii=False, indent="\t")
+			os.replace(tmp_path, new_path)
+
+		elif mode == "key-as-row":
+			# Add key to existing map file
+			file_path: str = td.rows[0].get("_file", "") if td.rows else ""
+			if not file_path:
+				return jsonify({"error": "Cannot determine target file"}), 500
+			abs_path: str = os.path.join(abs_config_dir, file_path)
+
+			with open(abs_path, "r", encoding="utf-8") as f:
+				existing_data = json.load(f)
+
+			from table_builder import _unflatten_value
+			default_cells = create_default_cells(td.table_def.columns, td.table_def.column_types)
+			default_cells.update(cells)
+			existing_data[row_key] = _unflatten_value(default_cells)
+
+			tmp_path = abs_path + ".tmp"
+			with open(tmp_path, "w", encoding="utf-8") as f:
+				json.dump(existing_data, f, ensure_ascii=False, indent="\t")
+			os.replace(tmp_path, abs_path)
+
+		elif mode == "array":
+			# Append to array file
+			file_path = td.rows[0].get("_file", "") if td.rows else ""
+			if not file_path:
+				return jsonify({"error": "Cannot determine target file"}), 500
+			abs_path = os.path.join(abs_config_dir, file_path)
+
+			with open(abs_path, "r", encoding="utf-8") as f:
+				existing_data = json.load(f)
+
+			from table_builder import _unflatten_value
+			default_cells = create_default_cells(td.table_def.columns, td.table_def.column_types)
+			default_cells.update(cells)
+			existing_data.append(_unflatten_value(default_cells))
+
+			tmp_path = abs_path + ".tmp"
+			with open(tmp_path, "w", encoding="utf-8") as f:
+				json.dump(existing_data, f, ensure_ascii=False, indent="\t")
+			os.replace(tmp_path, abs_path)
+
+		else:
+			return jsonify({"error": f"Cannot add rows in '{mode}' mode"}), 400
+
+		# Reload tables so the new row appears
+		_load_all_tables()
+		return jsonify({"status": "ok", "row_key": row_key})
+
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/refresh", methods=["POST"])
 def api_refresh():
 	"""Re-scan all config files and reload tables."""
@@ -169,38 +262,53 @@ def api_refresh():
 
 @app.route("/api/notes/<path:table_id>")
 def api_notes_get(table_id: str):
-	"""Get all notes for a table."""
+	"""Get all notes for a table (matched by config_key prefix)."""
 	if _notes_store is None:
 		return jsonify({})
-	notes: dict[str, str] = _notes_store.get_notes_for_table(table_id)
-	return jsonify(notes)
+	return jsonify(_notes_store.get_notes_by_prefix(table_id))
 
 
-@app.route("/api/notes/<path:table_id>/<path:row_key>/<path:column>", methods=["PUT"])
-def api_notes_set(table_id: str, row_key: str, column: str):
-	"""Set a note for a specific cell."""
+@app.route("/api/notes", methods=["PUT"])
+def api_notes_set():
+	"""Set a note. Body: {config_key, note_text}"""
 	if _notes_store is None:
 		return jsonify({"error": "Notes store not initialized"}), 500
 	body: dict = request.get_json()
 	if body is None:
 		return jsonify({"error": "Request body must be JSON"}), 400
+	config_key: str = body.get("config_key", "")
 	note_text: str = body.get("note_text", "")
-	_notes_store.set_note(table_id, row_key, column, note_text)
+	if not config_key:
+		return jsonify({"error": "config_key is required"}), 400
+	_notes_store.set_note(config_key, note_text)
 	return jsonify({"status": "ok"})
 
 
-@app.route("/api/notes/<path:table_id>/<path:row_key>/<path:column>", methods=["DELETE"])
-def api_notes_delete(table_id: str, row_key: str, column: str):
-	"""Delete a note."""
+@app.route("/api/notes", methods=["DELETE"])
+def api_notes_delete():
+	"""Delete a note. Body: {config_key}"""
 	if _notes_store is None:
 		return jsonify({"error": "Notes store not initialized"}), 500
-	_notes_store.delete_note(table_id, row_key, column)
+	body: dict = request.get_json()
+	if body is None:
+		return jsonify({"error": "Request body must be JSON"}), 400
+	config_key: str = body.get("config_key", "")
+	if not config_key:
+		return jsonify({"error": "config_key is required"}), 400
+	_notes_store.delete_note(config_key)
 	return jsonify({"status": "ok"})
 
 
-@app.route("/api/subtable/<path:table_id>/<path:row_key>/<path:column>")
-def api_subtable(table_id: str, row_key: str, column: str):
-	"""Expand an array-of-objects column into a sub-table."""
+@app.route("/api/subtable")
+def api_subtable():
+	"""Expand an array-of-objects column into a sub-table. Query: table_id, row_key, column"""
+	table_id: str = request.args.get("table_id", "")
+	row_key: str = request.args.get("row_key", "")
+	column: str = request.args.get("column", "")
+
+	if not table_id or not row_key or not column:
+		return jsonify({"error": "table_id, row_key, and column are required"}), 400
+
 	td: TableData | None = _tables.get(table_id)
 	if td is None:
 		return jsonify({"error": f"Table not found: {table_id}"}), 404

@@ -16,6 +16,9 @@
 			"tile_type": "farmland"
 		}
 	},
+	"effects":[],
+	"trigger_signal": {},
+	"trigger_condition": {},
 	"requires": [],
 	"conflicts_with": [],
 	"tags": ["farmland", "fertility", "economy"]
