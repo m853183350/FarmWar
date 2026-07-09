@@ -114,6 +114,20 @@ var crit_chance: float = DEFAULT_CRIT_CHANCE
 ## 暴击倍率。
 var crit_multiplier: float = DEFAULT_CRIT_MULTIPLIER
 
+## 攻击力。实际伤害 = 技能.base_damage × 技能.damage_multiplier × attack_power × buff 加成。
+## 不同兵种通过此值区分输出能力，共用同一个 basic_attack 技能。
+var attack_power: float = 1.0
+
+## 攻击速度。仅影响普攻（is_basic_attack = true）的冷却和施法阶段。
+## 实际冷却 = skill.cooldown_ticks / attack_speed，实际前摇后摇同理。
+## 1.0 = 正常速度，2.0 = 两倍速。
+var attack_speed: float = 1.0
+
+## 冷却缩减。仅影响非普攻技能（is_basic_attack = false）的冷却时间。
+## 实际冷却 = skill.cooldown_ticks × (1.0 - cooldown_reduction)。
+## 取值范围 0.0 ~ 1.0（0.0 = 无缩减，0.5 = 冷却减半）。
+var cooldown_reduction: float = 0.0
+
 ## 最大法力值（0 = 无法力系统）。
 var max_mana: float = 0.0
 
@@ -329,6 +343,15 @@ func is_alive() -> bool:
 func is_idle() -> bool:
 	return state == CombatState.IDLE
 
+## 设置战斗状态并发出 [signal state_changed] 信号。
+## 由 AI 行为模块调用以更新单位的战斗状态（IDLE/CHASE/CASTING 等）。
+func set_combat_state(new_state: int) -> void:
+	if state == new_state:
+		return
+	var old_state: int = state
+	state = new_state
+	state_changed.emit(old_state, new_state)
+
 ## 获取当前战斗状态名称（调试用）。
 func get_combat_state_name() -> String:
 	match state:
@@ -380,10 +403,9 @@ func get_effective_stat(stat_name: String, base_value: float) -> float:
 	return result
 
 ## 便捷方法：获取当前有效攻击力。
+## 实际伤害 = 技能.base_damage × 技能.damage_multiplier × get_attack_power() × crit × 抗性。
 func get_attack_power() -> float:
-	# 攻击力基础值来自 Buff 加成系统，若无 Buff 则默认为 0
-	var base: float = 0.0
-	return get_effective_stat("attack_power", base)
+	return get_effective_stat("attack_power", attack_power)
 
 ## 便捷方法：获取当前有效移动速度。
 func get_effective_move_speed() -> float:
@@ -396,6 +418,43 @@ func get_effective_armor() -> float:
 ## 便捷方法：获取当前有效魔抗。
 func get_effective_magic_resist() -> float:
 	return get_effective_stat("magic_resist", magic_resist)
+
+## 选择战斗中使用的最优技能。
+##
+## 默认实现委托给 [SkillSelector] 组件。子类（如 WheatSoldier、Aphid）
+## 可覆写此方法以实现完全不同的技能选择逻辑（如优先攻击后排、斩杀判定等）。
+##
+## [param available] 当前可用的技能列表（已过滤冷却/蓝量）。
+## [param target] 当前攻击目标。
+## [return] 被选中的技能，null 表示无可释放的技能。
+func select_combat_skill(available: Array[Skill], target: CombatUnitBase) -> Skill:
+	if ai_controller and ai_controller.get("skill_selector") != null:
+		var ss: SkillSelector = ai_controller.skill_selector as SkillSelector
+		if ss.has_method("select_skill"):
+			return ss.select_skill(self, target)
+	return available[0] if not available.is_empty() else null
+
+## 获取技能的实际冷却 tick 数，已应用攻击速度或冷却缩减。
+##
+## - 普攻（is_basic_attack = true）：冷却 / 前摇 / 后摇均由 [member attack_speed] 加速。
+## - 其他技能：冷却由 [member cooldown_reduction] 缩短，前摇后摇不变。
+##
+## [param skill] 目标技能。
+## [return] 应用单位属性后的有效冷却 tick 数。
+func get_effective_skill_cooldown(skill: Skill) -> int:
+	var base: int = skill.cooldown_ticks
+	if skill.is_basic_attack and attack_speed > 0.0:
+		return maxi(1, int(ceil(float(base) / attack_speed)))
+	elif not skill.is_basic_attack:
+		return maxi(1, int(ceil(float(base) * (1.0 - cooldown_reduction))))
+	return base
+
+## 获取技能的有效阶段 tick 数（前摇/判定帧/后摇）。
+## 仅普攻受 [member attack_speed] 影响。
+func get_effective_skill_phase_ticks(skill: Skill, base_ticks: int) -> int:
+	if skill.is_basic_attack and attack_speed > 0.0:
+		return maxi(1, int(ceil(float(base_ticks) / attack_speed)))
+	return base_ticks
 
 # ============================================================
 # 9. 公开方法 — 技能系统
@@ -432,7 +491,7 @@ func start_skill(skill: Skill) -> void:
 
 	active_skill = skill
 	active_skill_phase = SKILL_PHASE_WINDUP
-	skill_phase_remaining_ticks = skill.windup_ticks
+	skill_phase_remaining_ticks = get_effective_skill_phase_ticks(skill, skill.windup_ticks)
 	hit_targets_this_cast.clear()
 	projectile_spawned_this_cast = false
 
@@ -440,7 +499,7 @@ func start_skill(skill: Skill) -> void:
 	if skill.anim_windup != &"":
 		animation_controller.play_work(skill.anim_windup, anim_duration)
 
-	_set_combat_state(CombatState.CASTING)
+	set_combat_state(CombatState.CASTING)
 	skill_cast_started.emit(skill.skill_id, current_target.unit_id if current_target else &"")
 
 ## 强制中断当前技能施放。
@@ -587,7 +646,7 @@ func stun(duration_ticks: int) -> void:
 	if state == CombatState.DEAD:
 		return
 	interrupt_skill()
-	_set_combat_state(CombatState.STUNNED)
+	set_combat_state(CombatState.STUNNED)
 	# 眩晕计时由 _update_controller 或 AIController 管理（Phase 3）
 	# 当前预留：在 _on_tick 中通过计数器自动恢复
 	_stun_remaining = duration_ticks
@@ -595,14 +654,6 @@ func stun(duration_ticks: int) -> void:
 # ============================================================
 # 10. 私有方法 — 状态管理
 # ============================================================
-
-## 设置战斗状态并发出信号。
-func _set_combat_state(new_state: int) -> void:
-	if state == new_state:
-		return
-	var old_state: int = state
-	state = new_state
-	state_changed.emit(old_state, new_state)
 
 # ============================================================
 # 10. 私有方法 — Tick 更新
@@ -668,7 +719,7 @@ func _advance_skill_phase() -> void:
 ## 进入技能判定帧阶段。
 func _enter_active_phase() -> void:
 	active_skill_phase = SKILL_PHASE_ACTIVE
-	skill_phase_remaining_ticks = active_skill.active_ticks
+	skill_phase_remaining_ticks = get_effective_skill_phase_ticks(active_skill, active_skill.active_ticks)
 
 	# 激活 Hitbox
 	hitbox.activate()
@@ -684,7 +735,7 @@ func _enter_active_phase() -> void:
 ## 进入技能后摇阶段。
 func _enter_recovery_phase() -> void:
 	active_skill_phase = SKILL_PHASE_RECOVERY
-	skill_phase_remaining_ticks = active_skill.recovery_ticks
+	skill_phase_remaining_ticks = get_effective_skill_phase_ticks(active_skill, active_skill.recovery_ticks)
 
 	# 停用 Hitbox
 	hitbox.deactivate()
@@ -697,7 +748,7 @@ func _enter_recovery_phase() -> void:
 ## 完成技能施放。
 func _finish_skill() -> void:
 	# 设置冷却
-	skill_cooldowns[active_skill.skill_id] = active_skill.cooldown_ticks
+	skill_cooldowns[active_skill.skill_id] = get_effective_skill_cooldown(active_skill)
 
 	# 消耗法力
 	current_mana = maxf(0.0, current_mana - active_skill.mana_cost)
@@ -716,7 +767,7 @@ func _finish_skill() -> void:
 
 	# 回到空闲状态（后续由 AIController 接管）
 	if is_alive():
-		_set_combat_state(CombatState.IDLE)
+		set_combat_state(CombatState.IDLE)
 
 ## 尝试发射弹射物。
 func _try_spawn_projectile() -> void:
@@ -748,7 +799,7 @@ func _update_controller(_delta: float) -> void:
 	if state == CombatState.STUNNED:
 		_stun_remaining -= 1
 		if _stun_remaining <= 0:
-			_set_combat_state(CombatState.IDLE)
+			set_combat_state(CombatState.IDLE)
 		return
 
 	# 委托给 AIController（Phase 3）
@@ -824,7 +875,7 @@ func _die() -> void:
 	active_buffs.clear()
 
 	# 设置死亡状态
-	_set_combat_state(CombatState.DEAD)
+	set_combat_state(CombatState.DEAD)
 
 	# 发射死亡信号
 	if EventBus:
@@ -832,18 +883,97 @@ func _die() -> void:
 	combat_unit_died.emit(unit_id, &"")
 
 # ============================================================
-# 11. 虚方法 — 配置加载
+# 9. 公开方法 — 配置加载
+# ============================================================
+
+## 从 JSON 字典加载完整战斗单位配置（属性 + 技能 + AI）。
+##
+## 预期的 JSON 结构：
+##   {
+##     "unit_type": "wheat_soldier",
+##     "display_name": "麦粒小兵",
+##     "faction": 0,
+##     "stats": { "max_health": 100.0, "move_speed": 3.0, ... },
+##     "skills": ["basic_wheat_slash"],
+##     "ai": { "default_behavior": "Guard", "behaviors": [...], ... }
+##   }
+##
+## [param data] 从 JSON 解析出的完整配置字典。
+func init_from_config(data: Dictionary) -> void:
+	# ---- 单位基本信息 ----
+	unit_type = data.get("unit_type", unit_type) as StringName
+	display_name = data.get("display_name", display_name) as String
+	faction = data.get("faction", faction) as int
+
+	# ---- 战斗属性 ----
+	var stats: Dictionary = data.get("stats", {})
+	if not stats.is_empty():
+		max_health = stats.get("max_health", max_health) as float
+		current_health = max_health
+		move_speed = stats.get("move_speed", move_speed) as float
+		armor = stats.get("armor", armor) as float
+		magic_resist = stats.get("magic_resist", magic_resist) as float
+		crit_chance = stats.get("crit_chance", crit_chance) as float
+		crit_multiplier = stats.get("crit_multiplier", crit_multiplier) as float
+		attack_power = stats.get("attack_power", attack_power) as float
+		attack_speed = stats.get("attack_speed", attack_speed) as float
+		cooldown_reduction = stats.get("cooldown_reduction", cooldown_reduction) as float
+		max_mana = stats.get("max_mana", max_mana) as float
+		current_mana = max_mana
+		mana_regen = stats.get("mana_regen", mana_regen) as float
+		health_regen = stats.get("health_regen", health_regen) as float
+		knockback_resistance = stats.get("knockback_resistance", knockback_resistance) as float
+		acceleration = stats.get("acceleration", acceleration) as float
+		deceleration = stats.get("deceleration", deceleration) as float
+
+	# ---- 技能列表 ----
+	var skill_ids: Array = data.get("skills", [])
+	for sid: String in skill_ids:
+		var skill: Skill = _load_skill_from_id(sid as StringName)
+		if skill != null:
+			skills.append(skill)
+
+	# ---- AI 配置 ----
+	var ai_config: Dictionary = data.get("ai", {})
+	if not ai_config.is_empty():
+		init_ai_from_config(ai_config)
+
+	# 初始化法力条显示
+	if is_inside_tree() and mana_bar:
+		mana_bar.max_value = max_mana if max_mana > 0.0 else 100.0
+		mana_bar.value = current_mana
+		mana_bar.visible = max_mana > 0.0
+
+## 从 JSON 文件路径加载完整战斗单位配置。
+## 便捷方法，内部调用 [method init_from_config]。
+func init_from_file(path: String) -> void:
+	if not FileAccess.file_exists(path):
+		push_warning("CombatUnitBase: 配置文件不存在 %s" % path)
+		return
+	var file: FileAccess = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		push_warning("CombatUnitBase: 无法读取配置文件 %s" % path)
+		return
+	var data: Dictionary = JSON.parse_string(file.get_as_text()) as Dictionary
+	file.close()
+	if data == null:
+		push_warning("CombatUnitBase: JSON 解析失败 %s" % path)
+		return
+	init_from_config(data)
+
+# ============================================================
+# 11. 虚方法 — 配置加载（子类覆写入口）
 # ============================================================
 
 ## 加载战斗单位 JSON 配置。
-## 子类可覆写以指定不同的配置路径。
+## 子类可覆写以指定不同的配置路径或加载逻辑。
 func _load_combat_config() -> void:
-	# 配置路径由子类或 JSON 数据决定
-	# 子类应覆写此方法以加载专属配置并调用 init_ai_from_config
+	# 子类应覆写此方法以加载专属配置
+	# 例如：init_from_file("res://config/units/combat_stats/my_unit.json")
 	pass
 
 ## 从配置字典初始化 AI 控制器。
-## 在子类的 [method _load_combat_config] 中加载 JSON 后调用。
+## 在 [method init_from_config] 或子类的 [method _load_combat_config] 中调用。
 func init_ai_from_config(ai_config: Dictionary) -> void:
 	if ai_controller and ai_controller.has_method("init_from_config"):
 		ai_controller.init_from_config(ai_config)
@@ -860,3 +990,19 @@ func init_ai_from_file(path: String) -> void:
 		return
 	var ai_config: Dictionary = data.get("ai", {})
 	init_ai_from_config(ai_config)
+
+## 根据技能 ID 从 [code]config/skills/{skill_id}.json[/code] 加载 Skill 实例。
+func _load_skill_from_id(skill_id: StringName) -> Skill:
+	var path: String = "res://config/skills/%s.json" % skill_id
+	if not FileAccess.file_exists(path):
+		push_warning("CombatUnitBase: 技能配置文件不存在 %s" % path)
+		return null
+	var file: FileAccess = FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		return null
+	var data: Dictionary = JSON.parse_string(file.get_as_text()) as Dictionary
+	file.close()
+	if data == null:
+		push_warning("CombatUnitBase: 技能 JSON 解析失败 %s" % path)
+		return null
+	return Skill.from_dict(data)

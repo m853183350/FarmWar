@@ -47,8 +47,8 @@ static func calculate_damage(
 	armor: float = 0.0,
 	magic_resist: float = 0.0
 ) -> Dictionary:
-	# 1. 原始伤害 = (技能基础伤害 + 攻击力) × 技能倍率
-	var raw_damage: float = (skill.base_damage + attack_power) * skill.damage_multiplier
+	# 1. 原始伤害 = 技能基础伤害 × 技能倍率 × 攻击力
+	var raw_damage: float = skill.base_damage * skill.damage_multiplier * attack_power
 
 	# 2. 暴击判定
 	var is_crit: bool = false

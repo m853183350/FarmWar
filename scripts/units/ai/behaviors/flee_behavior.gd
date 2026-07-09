@@ -53,13 +53,13 @@ func update(unit: CombatUnitBase, _delta: float) -> void:
 
 	if _flee_counter >= flee_duration_ticks or all_safe:
 		unit.target_velocity = Vector2.ZERO
-		unit._set_combat_state(CombatUnitBase.CombatState.IDLE)
+		unit.set_combat_state(CombatUnitBase.CombatState.IDLE)
 		switch_to(unit, "Guard")
 		return
 
 	# 持续向安全方向移动
 	unit.target_velocity = _flee_direction
-	unit._set_combat_state(CombatUnitBase.CombatState.FLEE)
+	unit.set_combat_state(CombatUnitBase.CombatState.FLEE)
 
 func _calculate_flee_direction(unit: CombatUnitBase) -> Vector2:
 	var h: HatredSystem = hatred()

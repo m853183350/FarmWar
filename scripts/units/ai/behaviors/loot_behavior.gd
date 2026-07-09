@@ -132,7 +132,7 @@ func _move_to_loot(unit: CombatUnitBase) -> void:
 	if dist < ARRIVAL_THRESHOLD:
 		# 到达战利品位置，开始采集
 		unit.target_velocity = Vector2.ZERO
-		unit._set_combat_state(CombatUnitBase.CombatState.IDLE)
+		unit.set_combat_state(CombatUnitBase.CombatState.IDLE)
 		_collect_progress = 0
 		_state = LootState.COLLECTING
 		return
@@ -140,7 +140,7 @@ func _move_to_loot(unit: CombatUnitBase) -> void:
 	# 向战利品移动
 	var dir: Vector2 = target_pos - unit.grid_position
 	unit.target_velocity = dir.normalized()
-	unit._set_combat_state(CombatUnitBase.CombatState.CHASE)
+	unit.set_combat_state(CombatUnitBase.CombatState.CHASE)
 
 	if dir.x != 0.0:
 		unit.facing_direction = Vector2(signf(dir.x), 0.0)

@@ -1,6 +1,7 @@
 ## 战斗行为 — 在射程内对目标施放技能。
 ##
-## 从追击行为切换进入。使用 SkillSelector 选择最优技能并施放。
+## 从追击行为切换进入。技能选择委托给 [method CombatUnitBase.select_combat_skill]，
+## 子类可覆写以实现不同的选择逻辑（如斩杀判定、优先后排等）。
 ## 在技能施放期间等待其完成（前摇→判定→后摇），完成后继续选择下一个技能。
 ## 目标死亡或脱离射程时退出。
 class_name CombatBehavior
@@ -27,7 +28,7 @@ func _ready() -> void:
 func enter(unit: CombatUnitBase) -> void:
 	# 停止移动
 	unit.target_velocity = Vector2.ZERO
-	unit._set_combat_state(CombatUnitBase.CombatState.IDLE)
+	unit.set_combat_state(CombatUnitBase.CombatState.IDLE)
 	_last_chosen_skill = null
 
 func exit(_unit: CombatUnitBase) -> void:
@@ -51,12 +52,7 @@ func update(unit: CombatUnitBase, _delta: float) -> void:
 		return
 
 	# 检查目标是否还在射程内
-	var ss: SkillSelector = skill_selector()
-	if ss == null:
-		switch_to(unit, "Chase")
-		return
-
-	var closest_range: float = ss.get_closest_range(unit)
+	var closest_range: float = _get_closest_skill_range(unit)
 	if closest_range < 0.0:
 		# 没有可用技能，回到追击
 		switch_to(unit, "Chase")
@@ -68,8 +64,9 @@ func update(unit: CombatUnitBase, _delta: float) -> void:
 		switch_to(unit, "Chase")
 		return
 
-	# 选择技能并施放
-	var chosen: Skill = ss.select_skill(unit, target)
+	# 委托给单位选择技能（子类可覆写实现不同的选择逻辑）
+	var available: Array[Skill] = unit.get_available_skills()
+	var chosen: Skill = unit.select_combat_skill(available, target)
 	if chosen == null:
 		# 无可施放技能（可能在冷却/无蓝），等待或切换到追击
 		switch_to(unit, "Chase")
@@ -83,3 +80,15 @@ func update(unit: CombatUnitBase, _delta: float) -> void:
 	# 开始施放技能
 	unit.start_skill(chosen)
 	_last_chosen_skill = chosen
+
+# ============================================================
+# 10. 私有方法 — 辅助
+# ============================================================
+
+## 获取所有可用技能中最近的有效射程。
+## 委托给 [SkillSelector] 组件进行范围查询。
+func _get_closest_skill_range(unit: CombatUnitBase) -> float:
+	var ss: SkillSelector = skill_selector()
+	if ss == null:
+		return -1.0
+	return ss.get_closest_range(unit)

@@ -90,7 +90,7 @@ func update(unit: CombatUnitBase, _delta: float) -> void:
 		unit.target_velocity = Vector2.ZERO
 
 	# 设置战斗状态为 CHASE（驱动 Physics 层移动）
-	unit._set_combat_state(CombatUnitBase.CombatState.CHASE)
+	unit.set_combat_state(CombatUnitBase.CombatState.CHASE)
 
 	# 面向目标
 	if dir.x != 0.0:

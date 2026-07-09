@@ -85,7 +85,7 @@ func _pick_patrol_point(unit: CombatUnitBase) -> void:
 
 	# 设置移动目标
 	unit.set_move_target_world(_current_patrol_target)
-	unit._set_combat_state(CombatUnitBase.CombatState.CHASE)  # 使用 CHASE 状态驱动移动
+	unit.set_combat_state(CombatUnitBase.CombatState.CHASE)  # 使用 CHASE 状态驱动移动
 	_state = PatrolState.MOVING
 
 func _check_arrival(unit: CombatUnitBase) -> void:
@@ -93,6 +93,6 @@ func _check_arrival(unit: CombatUnitBase) -> void:
 	if dist < 4.0:
 		# 到达巡逻点
 		unit.target_velocity = Vector2.ZERO
-		unit._set_combat_state(CombatUnitBase.CombatState.IDLE)
+		unit.set_combat_state(CombatUnitBase.CombatState.IDLE)
 		_state = PatrolState.WAITING
 		_wait_counter = 0

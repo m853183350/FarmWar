@@ -1,0 +1,33 @@
+{
+	"unit_type": "aphid",
+	"display_name": "蚜虫",
+	"faction": 1,
+	"stats": {
+		"max_health": 50,
+		"move_speed": 5,
+		"attack_power": 0,
+		"attack_speed": 0,
+		"cooldown_reduction": 0,
+		"armor": 0,
+		"magic_resist": 0,
+		"crit_chance": 0.00,
+		"crit_multiplier": 1.5,
+		"max_mana": 0,
+		"mana_regen": 0,
+		"health_regen": 0,
+		"knockback_resistance": 0,
+		"acceleration": 20.0,
+		"deceleration": 20.0
+	},
+	"skills": ["basic_attack"],
+	"ai": {
+		"default_behavior": "Patrol",
+		"behaviors": ["Guard", "Patrol", "Chase", "Combat"],
+		"enable_hatred": true,
+		"enable_skill_selector": true,
+		"flee_hp_ratio": 0.15,
+		"hatred_alert_range": 6.0,
+		"hatred_chase_range": 12.0,
+		"hatred_scan_interval": 5
+	}
+}

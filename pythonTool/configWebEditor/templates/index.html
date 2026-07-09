@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Config Web Editor</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div id="app">
+	<!-- Top bar -->
+	<header id="topbar">
+		<h1>Config Web Editor</h1>
+		<div class="topbar-actions">
+			<span id="dirty-counter" class="dirty-badge hidden">0 unsaved</span>
+			<button id="btn-refresh" title="Re-read all config files">&#x21bb; Refresh</button>
+			<button id="btn-save-all" class="primary" title="Save all changed files">&#x1f4be; Save All</button>
+		</div>
+	</header>
+
+	<div id="main-layout">
+		<!-- Left sidebar: table list -->
+		<aside id="sidebar">
+			<div id="sidebar-header">
+				<input type="text" id="table-search" placeholder="Filter tables...">
+			</div>
+			<nav id="table-nav"></nav>
+		</aside>
+
+		<!-- Main content: editable table -->
+		<main id="content">
+			<div id="table-header">
+				<h2 id="table-title">Select a table</h2>
+				<div id="table-meta"></div>
+			</div>
+			<div id="table-container">
+				<div id="table-placeholder">Select a table from the sidebar to begin editing.</div>
+			</div>
+		</main>
+
+		<!-- Right panel: notes -->
+		<aside id="notes-panel" class="collapsed">
+			<div id="notes-header">
+				<h3>Notes</h3>
+				<button id="btn-notes-close">&times;</button>
+			</div>
+			<div id="notes-info">
+				<span id="notes-cell-path"></span>
+			</div>
+			<textarea id="notes-textarea" placeholder="Add a note for this field..."></textarea>
+			<div id="notes-actions">
+				<button id="btn-note-save">Save Note</button>
+				<button id="btn-note-delete" class="danger">Delete</button>
+			</div>
+		</aside>
+	</div>
+
+	<!-- Sub-table overlay -->
+	<div id="subtable-overlay" class="hidden">
+		<div id="subtable-dialog">
+			<div id="subtable-header">
+				<h3 id="subtable-title">Sub-table</h3>
+				<button id="btn-subtable-close">&times;</button>
+			</div>
+			<div id="subtable-container"></div>
+		</div>
+	</div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

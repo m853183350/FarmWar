@@ -8,7 +8,12 @@
 ##   - 普通任务：到达目标 → 标记完成 → 切 Guard
 ##   - 小队任务（有 squad_id）：
 ##     到达目标 → 巡逻 task_center + patrol_radius → 主动索敌战斗 →
-##     战斗结束 → 收集战利品 → 检查完成条件 → 完成后切 Guard
+##     战斗结束 → 收集战利品 → 等待 SquadTaskTracker 确认完成 → 完成后切 Guard
+##
+## 小队任务完成由 [SquadTaskTracker] 每 10 tick 轮询判断，
+## 满足条件后通过 [signal EventBus.squad_task_completed] 信号通知。
+## 信号监听在 [method _ready] 中一次性连接（非 enter/exit 切换），
+## 防止单位在战斗中错过完成信号。
 ##
 ## Phase 4 完整实现，替换 Phase 3 的 duck-typing 访问。
 class_name ExecuteTaskBehavior
@@ -46,12 +51,25 @@ var _squad_arrived: bool = false
 var _patrol_direction: Vector2 = Vector2.ZERO
 var _patrol_ticks: int = 0
 
+## 本行为实例已收到 SquadTaskTracker 完成通知的小队 ID。
+## 信号回调写入，enter() 消费。持久化在行为实例上（跨 enter/exit），
+## 确保单位在战斗中错过信号后，重新进入时仍能检测到完成状态。
+## 每个单位拥有独立的 ExecuteTaskBehavior 实例，互不干扰。
+var _completed_squad_id: StringName = &""
+
 # ============================================================
 # 8. 生命周期
 # ============================================================
 
 func _ready() -> void:
 	behavior_name = "ExecuteTask"
+	# 持久监听 SquadTaskTracker 完成信号（非 enter/exit 切换）
+	if EventBus and not EventBus.squad_task_completed.is_connected(_on_squad_task_completed):
+		EventBus.squad_task_completed.connect(_on_squad_task_completed)
+
+func _exit_tree() -> void:
+	if EventBus and EventBus.squad_task_completed.is_connected(_on_squad_task_completed):
+		EventBus.squad_task_completed.disconnect(_on_squad_task_completed)
 
 # ============================================================
 # 9. 公开方法
@@ -76,6 +94,15 @@ func enter(unit: CombatUnitBase) -> void:
 	if _task.task_type == CombatTask.CombatTaskType.HOLD:
 		_target_position = unit.grid_position
 
+	# 小队任务：检查是否已被 SquadTaskTracker 确认完成（防止战斗中错过信号）
+	if _task.is_squad_task() and _task.squad_id == _completed_squad_id:
+		# 小队已完成，直接标记并退出
+		_task.mark_completed()
+		if EventBus:
+			EventBus.combat_task_completed.emit(unit.unit_id, _task.task_id)
+		_complete_and_switch(unit, "Guard")
+		return
+
 func exit(_unit: CombatUnitBase) -> void:
 	_task = null
 
@@ -92,7 +119,19 @@ func update(unit: CombatUnitBase, _delta: float) -> void:
 
 	# 任务已被覆盖
 	if _task.status == CombatTask.CombatTaskStatus.OVERRIDDEN:
-		switch_to(unit, "Guard")
+		# 清理完成记录（旧任务已被覆盖）
+		if _task.is_squad_task():
+			_completed_squad_id = &""
+		_complete_and_switch(unit, "Guard")
+		return
+
+	# SquadTaskTracker 已确认小队完成 → 标记任务完成并退出
+	if _task.is_squad_task() and _task.squad_id == _completed_squad_id:
+		_completed_squad_id = &""
+		_task.mark_completed()
+		if EventBus:
+			EventBus.combat_task_completed.emit(unit.unit_id, _task.task_id)
+		_complete_and_switch(unit, "Guard")
 		return
 
 	# HOLD：原地停留，自卫但不移动
@@ -162,7 +201,7 @@ func _update_move_to_target(unit: CombatUnitBase, target_pos: Vector2, _retreati
 	var dir: Vector2 = target_pos - unit.grid_position
 	if dir.length() > ARRIVAL_THRESHOLD:
 		unit.target_velocity = dir.normalized()
-		unit._set_combat_state(CombatUnitBase.CombatState.CHASE)
+		unit.set_combat_state(CombatUnitBase.CombatState.CHASE)
 
 	if dir.x != 0.0:
 		unit.facing_direction = Vector2(signf(dir.x), 0.0)
@@ -170,7 +209,7 @@ func _update_move_to_target(unit: CombatUnitBase, target_pos: Vector2, _retreati
 ## HOLD 指令：原地不动，减速到零，但会自卫。
 func _update_hold(unit: CombatUnitBase) -> void:
 	unit.target_velocity = Vector2.ZERO
-	unit._set_combat_state(CombatUnitBase.CombatState.IDLE)
+	unit.set_combat_state(CombatUnitBase.CombatState.IDLE)
 
 	# 自卫：被攻击时还击
 	var h: HatredSystem = hatred()
@@ -191,7 +230,7 @@ func _on_arrived_at_target(unit: CombatUnitBase) -> void:
 	if _task.is_squad_task():
 		# 小队任务：进入巡逻模式
 		_squad_arrived = true
-		unit._set_combat_state(CombatUnitBase.CombatState.IDLE)
+		unit.set_combat_state(CombatUnitBase.CombatState.IDLE)
 		if _patrol_direction == Vector2.ZERO:
 			_patrol_direction = Vector2.RIGHT.rotated(randf() * TAU)
 	else:
@@ -220,12 +259,12 @@ func _update_squad_patrol(unit: CombatUnitBase) -> void:
 			switch_to(unit, "Chase")
 			return
 
-	# 检查小队任务完成条件
-	if _check_squad_complete(unit):
+	# 检查 SquadTaskTracker 通知
+	if _task.is_squad_task() and _task.squad_id == _completed_squad_id:
+		_completed_squad_id = &""
 		_task.mark_completed()
 		if EventBus:
 			EventBus.combat_task_completed.emit(unit.unit_id, _task.task_id)
-		# 先切 Loot（如果有），再切 Guard
 		_complete_and_switch(unit, "Guard")
 		return
 
@@ -246,20 +285,15 @@ func _update_squad_patrol(unit: CombatUnitBase) -> void:
 
 	_update_move_to_target(unit, patrol_target, false)
 
-## 检查小队是否满足完成条件（委托给 SquadTaskTracker）。
-func _check_squad_complete(_unit: CombatUnitBase) -> bool:
-	if _task == null or not _task.is_squad_task():
-		return false
+# ============================================================
+# 10. 私有方法 — 信号回调
+# ============================================================
 
-	# 检查核心条件：仇恨为空
-	var h: HatredSystem = hatred()
-	if h and h.has_threat_target():
-		return false
-
-	# 如果 SquadTaskTracker 标记小队已完成
-	# （SquadTaskTracker 负责更全面的检查：全部到达 + 战利品清空）
-	# 这里只做基本检查避免过度耦合
-	return false  # 单靠仇恨无法判断完成，等待 SquadTaskTracker 通知
+## SquadTaskTracker 确认小队任务完成。
+## 将 squad_id 记录到静态集合中，供 enter() 和 update() 消费。
+## 使用静态集合而非实例标记，确保单位在战斗中切换行为后不会错过完成信号。
+func _on_squad_task_completed(squad_id: StringName) -> void:
+	_completed_squad_id = squad_id
 
 # ============================================================
 # 10. 私有方法 — 辅助

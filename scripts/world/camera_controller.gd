@@ -70,6 +70,9 @@ func _ready() -> void:
 	_target_zoom = zoom.x
 	_read_terrain_bounds()
 	_apply_config()
+	# 监听地形重新生成事件，更新边界（只连接一次）
+	if EventBus and not EventBus.terrain_generated.is_connected(_on_terrain_generated):
+		EventBus.terrain_generated.connect(_on_terrain_generated)
 
 func _process(delta: float) -> void:
 	_update_edge_scroll(delta)
@@ -158,9 +161,6 @@ func _read_terrain_bounds() -> void:
 		_map_height = tg.map_height
 		_tile_size = tg.tile_size
 		_update_world_bounds()
-	# 监听地形重新生成事件，更新边界
-	if EventBus:
-		EventBus.terrain_generated.connect(_on_terrain_generated)
 
 ## 根据地图宽高和地块大小计算世界坐标边界。
 func _update_world_bounds() -> void:

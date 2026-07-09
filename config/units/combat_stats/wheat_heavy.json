@@ -1,0 +1,33 @@
+{
+	"unit_type": "wheat_heavy",
+	"display_name": "麦粒重装兵",
+	"faction": 0,
+	"stats": {
+		"max_health": 200,
+		"move_speed": 4,
+		"attack_power": 0,
+		"attack_speed": 0,
+		"cooldown_reduction": 0,
+		"armor": 0,
+		"magic_resist": 0,
+		"crit_chance": 0.00,
+		"crit_multiplier": 1.5,
+		"max_mana": 0,
+		"mana_regen": 0,
+		"health_regen": 0,
+		"knockback_resistance": 0,
+		"acceleration": 20.0,
+		"deceleration": 20.0
+	},
+	"skills": ["basic_attack"],
+	"ai": {
+		"default_behavior": "Guard",
+		"behaviors": ["Guard", "Chase", "Combat", "Flee", "Loot", "ExecuteTask"],
+		"enable_hatred": true,
+		"enable_skill_selector": true,
+		"flee_hp_ratio": 0.30,
+		"hatred_alert_range": 6.0,
+		"hatred_chase_range": 10.0,
+		"hatred_scan_interval": 5
+	}
+}
